@@ -1,0 +1,17 @@
+{
+  "subject": "Deine iDeskBooking Buchung",
+  "headline": "Hallo {{recipientName}},",
+  "paragraphs": [
+    "deine Buchung wurde bestätigt.",
+    "Datum: {{date}}",
+    "Bereich: {{areaName}}",
+    "Platz: {{spaceName}}",
+    "Betreff: {{subject}}"
+  ],
+  "buttons": [
+    {
+      "label": "Deine Buchungen",
+      "url": "{{orgDomain}}ui/bookings/"
+    }
+  ]
+}

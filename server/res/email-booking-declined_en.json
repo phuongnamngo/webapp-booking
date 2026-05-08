@@ -1,0 +1,17 @@
+{
+  "subject": "Your iDeskBooking booking: Declined",
+  "headline": "Hello {{recipientName}},",
+  "paragraphs": [
+    "Your booking request has been declined.",
+    "Date: {{date}}",
+    "Area: {{areaName}}",
+    "Space: {{spaceName}}",
+    "Subject: {{subject}}"
+  ],
+  "buttons": [
+    {
+      "label": "Your bookings",
+      "url": "{{orgDomain}}ui/bookings/"
+    }
+  ]
+}

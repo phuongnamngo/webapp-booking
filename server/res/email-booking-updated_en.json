@@ -1,0 +1,17 @@
+{
+  "subject": "Your iDeskBooking booking: Updated",
+  "headline": "Hello {{recipientName}},",
+  "paragraphs": [
+    "Your booking has been updated.",
+    "Date: {{date}}",
+    "Area: {{areaName}}",
+    "Space: {{spaceName}}",
+    "Subject: {{subject}}"
+  ],
+  "buttons": [
+    {
+      "label": "Your bookings",
+      "url": "{{orgDomain}}ui/bookings/"
+    }
+  ]
+}

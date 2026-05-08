@@ -1,0 +1,710 @@
+import React from "react";
+import { Form, Col, Row, Button, Alert, InputGroup } from "react-bootstrap";
+import {
+  ChevronLeft as IconBack,
+  Save as IconSave,
+  Trash2 as IconDelete,
+  RefreshCw as IconRefresh,
+  XCircle as IconReset,
+} from "react-feather";
+import { NextRouter } from "next/router";
+import FullLayout from "@/components/FullLayout";
+import Link from "next/link";
+import Loading from "@/components/Loading";
+import CopyToClipboardButton from "@/components/CopyToClipboardButton";
+import withReadyRouter from "@/components/withReadyRouter";
+import RuntimeConfig from "@/components/RuntimeConfig";
+import { TranslationFunc, withTranslation } from "@/components/withTranslation";
+import User from "@/types/User";
+import Ajax from "@/util/Ajax";
+import OrgSettings from "@/types/Settings";
+import RedirectUtil from "@/util/RedirectUtil";
+import AuthProvider from "@/types/AuthProvider";
+import ErrorText from "@/types/ErrorText";
+import AjaxError from "@/util/AjaxError";
+import Validation from "@/util/Validation";
+
+interface State {
+  loading: boolean;
+  submitting: boolean;
+  saved: boolean;
+  error: boolean;
+  errorText: string;
+  goBack: boolean;
+  email: string;
+  originalEmail: string;
+  firstname: string;
+  lastname: string;
+  requirePassword: boolean;
+  password: string;
+  changePassword: boolean;
+  authMethod: string; // "password" | "provider" | "invitation"
+  authProviderId: string;
+  sendInvitation: boolean;
+  resendInvitation: boolean;
+  role: number;
+  totpEnabled: boolean;
+  hasPasskeys: boolean;
+}
+
+interface Props {
+  router: NextRouter;
+  t: TranslationFunc;
+}
+
+class EditUser extends React.Component<Props, State> {
+  entity: User = new User();
+  authProviders: AuthProvider[] = [];
+  usersMax: number = 0;
+  usersCur: number = -1;
+  adminUserRole: number = 0;
+
+  constructor(props: any) {
+    super(props);
+    this.state = {
+      loading: true,
+      submitting: false,
+      saved: false,
+      error: false,
+      errorText: "",
+      goBack: false,
+      email: "",
+      originalEmail: "",
+      firstname: "",
+      lastname: "",
+      requirePassword: false,
+      password: "",
+      changePassword: false,
+      authMethod: "password",
+      authProviderId: "",
+      sendInvitation: false,
+      resendInvitation: false,
+      role: User.UserRoleUser,
+      totpEnabled: false,
+      hasPasskeys: false,
+    };
+  }
+
+  componentDidMount = () => {
+    if (!Ajax.hasAccessToken()) {
+      RedirectUtil.toLogin(this.props.router);
+      return;
+    }
+    this.loadData();
+  };
+
+  isServiceAccount = (role: number) => {
+    return (
+      role === User.UserRoleServiceAccountRO ||
+      role === User.UserRoleServiceAccountRW
+    );
+  };
+
+  loadData = () => {
+    const promises: Promise<any>[] = [
+      OrgSettings.getOne("feature_no_user_limit"),
+      User.getCount(),
+      User.getSelf().then((me) => {
+        return [me];
+      }),
+      AuthProvider.list(),
+    ];
+    const { id } = this.props.router.query;
+    if (id && typeof id === "string" && id !== "add") {
+      promises.push(User.get(id));
+    }
+    Promise.all(promises).then((values) => {
+      this.usersMax = values[0] === "1" ? 1000000 : 10;
+      this.usersCur = values[1];
+      this.adminUserRole = values[2][0].role;
+      this.authProviders = values[3];
+      if (values.length >= 5) {
+        let user = values[4];
+        this.entity = user;
+        // Determine auth method from user data
+        let authMethod = "password";
+        if (user.passwordPending) {
+          authMethod = "invitation";
+        } else if (user.authProviderId) {
+          authMethod = "provider";
+        } else if (user.requirePassword) {
+          authMethod = "password";
+        }
+        this.setState({
+          email: user.email,
+          originalEmail: user.email,
+          firstname: user.firstname,
+          lastname: user.lastname,
+          requirePassword: user.requirePassword,
+          authMethod: authMethod,
+          authProviderId: user.authProviderId || "",
+          role: user.role,
+          totpEnabled: user.totpEnabled,
+          hasPasskeys: user.hasPasskeys,
+        });
+      }
+      this.setState({
+        loading: false,
+      });
+    });
+  };
+
+  onSubmit = (e: any) => {
+    e.preventDefault();
+    this.setState({
+      error: false,
+      saved: false,
+    });
+    this.entity.email = this.state.email;
+    this.entity.firstname = this.state.firstname;
+    this.entity.lastname = this.state.lastname;
+    this.entity.role = this.state.role;
+
+    // Set authentication fields based on selected auth method
+    if (this.state.authMethod === "invitation") {
+      // Only send invitation if email changed or explicitly requested
+      const emailChanged = this.state.email !== this.state.originalEmail;
+      const isNewUser = !this.entity.id;
+      this.entity.sendInvitation =
+        isNewUser || emailChanged || this.state.resendInvitation;
+      this.entity.password = "";
+      this.entity.authProviderId = "";
+    } else if (this.state.authMethod === "provider") {
+      this.entity.sendInvitation = false;
+      this.entity.password = "";
+      this.entity.authProviderId = this.state.authProviderId;
+    } else {
+      // password method
+      this.entity.sendInvitation = false;
+      this.entity.authProviderId = "";
+      if (this.state.changePassword || !this.entity.id) {
+        this.entity.password = this.state.password;
+      } else {
+        this.entity.password = "";
+      }
+    }
+
+    this.entity
+      .save()
+      .then(() => {
+        this.props.router.push("/admin/users/" + this.entity.id);
+        this.setState({
+          saved: true,
+          resendInvitation: false,
+          originalEmail: this.entity.email, // don't (re)send invitation mails on second save
+        });
+      })
+      .catch((e) => {
+        let code: number = 0;
+        if (e instanceof AjaxError) {
+          code = e.appErrorCode;
+        }
+        this.setState({
+          error: true,
+          errorText: code
+            ? ErrorText.getTextForAppCode(code, this.props.t)
+            : "",
+        });
+      });
+  };
+
+  deleteItem = () => {
+    if (window.confirm(this.props.t("confirmDeleteUser"))) {
+      this.entity.delete().then(() => {
+        this.setState({ goBack: true });
+      });
+    }
+  };
+
+  resetPasskeys = () => {
+    if (window.confirm(this.props.t("confirmResetPasskeys"))) {
+      User.adminResetPasskeys(this.entity.id).then(() => {
+        this.setState({ hasPasskeys: false });
+      });
+    }
+  };
+
+  resetTotp = () => {
+    if (window.confirm(this.props.t("confirmResetTotp"))) {
+      User.adminResetTotp(this.entity.id).then(() => {
+        this.setState({ totpEnabled: false });
+      });
+    }
+  };
+
+  generatePassword = () => {
+    const password = Validation.generatePassword();
+    this.setState({ password, changePassword: true });
+  };
+
+  changeRole = (role: number) => {
+    let changePassword = this.isServiceAccount(role)
+      ? true
+      : this.state.changePassword;
+    this.setState({ role: role, changePassword });
+    if (changePassword) {
+      this.generatePassword();
+    }
+  };
+
+  render() {
+    if (this.state.goBack) {
+      this.props.router.push("/admin/users");
+      return <></>;
+    }
+
+    let backButton = (
+      <Link href="/admin/users" className="btn btn-sm btn-outline-secondary">
+        <IconBack className="feather" /> {this.props.t("back")}
+      </Link>
+    );
+    let buttons = backButton;
+
+    if (this.state.loading) {
+      return (
+        <FullLayout headline={this.props.t("editUser")} buttons={buttons}>
+          <Loading />
+        </FullLayout>
+      );
+    }
+
+    if (this.usersCur >= this.usersMax && !this.entity.id) {
+      return (
+        <FullLayout headline={this.props.t("editUser")} buttons={buttons}>
+          <p>{this.props.t("errorSubscriptionLimit")}</p>
+        </FullLayout>
+      );
+    }
+
+    let hint = <></>;
+    if (this.state.saved) {
+      hint = <Alert variant="success">{this.props.t("entryUpdated")}</Alert>;
+    } else if (this.state.error) {
+      hint = (
+        <Alert variant="danger">
+          {this.state.errorText ?? this.props.t("errorSave")}
+        </Alert>
+      );
+    }
+
+    const buttonDelete = (
+      <Button
+        className="btn-sm"
+        variant="outline-secondary"
+        onClick={this.deleteItem}
+        disabled={RuntimeConfig.INFOS.userId === this.entity.id}
+      >
+        <IconDelete className="feather" /> {this.props.t("delete")}
+      </Button>
+    );
+    const buttonSave = (
+      <Button
+        className="btn-sm"
+        variant="outline-secondary"
+        type="submit"
+        form="form"
+      >
+        <IconSave className="feather" /> {this.props.t("save")}
+      </Button>
+    );
+    if (this.entity.id) {
+      buttons = (
+        <>
+          {backButton} {buttonDelete} {buttonSave}
+        </>
+      );
+    } else {
+      buttons = (
+        <>
+          {backButton} {buttonSave}
+        </>
+      );
+    }
+    const isOwnUser = RuntimeConfig.INFOS.userId === this.entity.id;
+    let roleSelect = <></>;
+    if (!isOwnUser && this.adminUserRole >= this.state.role) {
+      roleSelect = (
+        <Form.Select
+          id="role"
+          value={this.state.role}
+          onChange={(e: any) => this.changeRole(parseInt(e.target.value))}
+          required={true}
+        >
+          <option value={User.UserRoleUser}>{this.props.t("roleUser")}</option>
+          {this.adminUserRole >= User.UserRoleSpaceAdmin ? (
+            <option value={User.UserRoleSpaceAdmin}>
+              {this.props.t("roleSpaceAdmin")}
+            </option>
+          ) : (
+            <></>
+          )}
+          {this.adminUserRole >= User.UserRoleOrgAdmin ? (
+            <option value={User.UserRoleOrgAdmin}>
+              {this.props.t("roleOrgAdmin")}
+            </option>
+          ) : (
+            <></>
+          )}
+          {this.adminUserRole >= User.UserRoleOrgAdmin ? (
+            <option value={User.UserRoleServiceAccountRO}>
+              {this.props.t("roleServiceAccountRO")}
+            </option>
+          ) : (
+            <></>
+          )}
+          {this.adminUserRole >= User.UserRoleOrgAdmin ? (
+            <option value={User.UserRoleServiceAccountRW}>
+              {this.props.t("roleServiceAccountRW")}
+            </option>
+          ) : (
+            <></>
+          )}
+          {this.adminUserRole >= User.UserRoleSuperAdmin ? (
+            <option value={User.UserRoleSuperAdmin}>
+              {this.props.t("roleSuperAdmin")}
+            </option>
+          ) : (
+            <></>
+          )}
+        </Form.Select>
+      );
+    } else {
+      let role = this.props.t("roleUser");
+      if (this.state.role === User.UserRoleSpaceAdmin) {
+        role = this.props.t("roleSpaceAdmin");
+      }
+      if (this.state.role === User.UserRoleOrgAdmin) {
+        role = this.props.t("roleOrgAdmin");
+      }
+      if (this.state.role === User.UserRoleServiceAccountRO) {
+        role = this.props.t("roleServiceAccountRO");
+      }
+      if (this.state.role === User.UserRoleServiceAccountRW) {
+        role = this.props.t("roleServiceAccountRW");
+      }
+      if (this.state.role === User.UserRoleSuperAdmin) {
+        role = this.props.t("roleSuperAdmin");
+      }
+      roleSelect = (
+        <>
+          <Form.Control
+            id="role"
+            plaintext={true}
+            readOnly={true}
+            defaultValue={role}
+          />
+          {isOwnUser && (
+            <Form.Text className="text-muted">
+              {this.props.t("cannotChangeOwnRole")}
+            </Form.Text>
+          )}
+        </>
+      );
+    }
+    return (
+      <FullLayout headline={this.props.t("editUser")} buttons={buttons}>
+        <Form onSubmit={this.onSubmit} id="form">
+          {hint}
+          <Form.Group as={Row}>
+            <Form.Label htmlFor="role" column sm="2">
+              {this.props.t("role")}
+            </Form.Label>
+            <Col sm="4">{roleSelect}</Col>
+          </Form.Group>
+          {!this.isServiceAccount(this.state.role) && (
+            <Form.Group as={Row}>
+              <Form.Label htmlFor="email" column sm="2">
+                {this.props.t("emailAddress")}
+              </Form.Label>
+              <Col sm="4">
+                <Form.Control
+                  id="email"
+                  type="email"
+                  placeholder="some@domain.com"
+                  value={this.state.email}
+                  onChange={(e: any) =>
+                    this.setState({ email: e.target.value })
+                  }
+                  required={true}
+                />
+              </Col>
+            </Form.Group>
+          )}
+          <Form.Group as={Row}>
+            <Form.Label htmlFor="firstname" column sm="2">
+              {this.props.t("firstname")}
+            </Form.Label>
+            <Col sm="4">
+              <Form.Control
+                id="firstname"
+                type="text"
+                placeholder=""
+                value={this.state.firstname}
+                onChange={(e: any) =>
+                  this.setState({ firstname: e.target.value })
+                }
+                required={true}
+              />
+            </Col>
+          </Form.Group>
+          <Form.Group as={Row}>
+            <Form.Label htmlFor="lastname" column sm="2">
+              {this.props.t("lastname")}
+            </Form.Label>
+            <Col sm="4">
+              <Form.Control
+                id="lastname"
+                type="text"
+                placeholder=""
+                value={this.state.lastname}
+                onChange={(e: any) =>
+                  this.setState({ lastname: e.target.value })
+                }
+                required={true}
+              />
+            </Col>
+          </Form.Group>
+          <Form.Group as={Row}>
+            <Form.Label htmlFor="username" column sm="2">
+              {this.props.t("username")}
+            </Form.Label>
+            <Col sm="4">
+              <InputGroup>
+                <Form.Control
+                  id="username"
+                  type="text"
+                  readOnly={!this.isServiceAccount(this.state.role)}
+                  value={this.state.email}
+                  onChange={
+                    this.isServiceAccount(this.state.role)
+                      ? (e: any) => this.setState({ email: e.target.value })
+                      : undefined
+                  }
+                  required={this.isServiceAccount(this.state.role)}
+                />
+                <CopyToClipboardButton text={this.state.email} />
+              </InputGroup>
+            </Col>
+          </Form.Group>
+
+          {/* Auth method selection for non-service accounts */}
+          <Form.Group
+            as={Row}
+            hidden={
+              this.isServiceAccount(this.state.role) ||
+              RuntimeConfig.INFOS.disablePasswordLogin
+            }
+          >
+            <Form.Label htmlFor="auth-method-password" column sm="2">
+              {this.props.t("authMethod")}
+            </Form.Label>
+            <Col sm="4">
+              <Form.Check
+                type="radio"
+                id="auth-method-password"
+                name="authMethod"
+                label={this.props.t("authMethodPassword")}
+                checked={this.state.authMethod === "password"}
+                onChange={() => this.setState({ authMethod: "password" })}
+              />
+              {this.authProviders.length > 0 && (
+                <Form.Check
+                  type="radio"
+                  id="auth-method-provider"
+                  name="authMethod"
+                  label={this.props.t("authMethodProvider")}
+                  checked={this.state.authMethod === "provider"}
+                  onChange={() => this.setState({ authMethod: "provider" })}
+                />
+              )}
+              <Form.Check
+                type="radio"
+                id="auth-method-invitation"
+                name="authMethod"
+                label={this.props.t("authMethodInvitation")}
+                checked={this.state.authMethod === "invitation"}
+                onChange={() => this.setState({ authMethod: "invitation" })}
+              />
+            </Col>
+          </Form.Group>
+
+          {/* Auth provider selection */}
+          <Form.Group
+            as={Row}
+            hidden={
+              this.isServiceAccount(this.state.role) ||
+              this.state.authMethod !== "provider" ||
+              RuntimeConfig.INFOS.disablePasswordLogin
+            }
+          >
+            <Form.Label htmlFor="authProvider" column sm="2">
+              {this.props.t("chooseAuthProvider")}
+            </Form.Label>
+            <Col sm="4">
+              <Form.Select
+                id="authProvider"
+                value={this.state.authProviderId}
+                onChange={(e: any) =>
+                  this.setState({ authProviderId: e.target.value })
+                }
+                required={this.state.authMethod === "provider"}
+              >
+                <option value="">{this.props.t("pleaseSelect")}</option>
+                {this.authProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </Form.Select>
+            </Col>
+          </Form.Group>
+
+          {/* Password change checkbox for existing users */}
+          <Form.Group
+            as={Row}
+            hidden={
+              this.isServiceAccount(this.state.role) ||
+              !this.entity.id ||
+              this.state.authMethod !== "password" ||
+              RuntimeConfig.INFOS.disablePasswordLogin
+            }
+          >
+            <Col sm="6">
+              <Form.Check
+                type="checkbox"
+                id="check-changePassword"
+                label={this.props.t("passwordChange")}
+                checked={this.state.changePassword}
+                onChange={(e: any) =>
+                  this.setState({ changePassword: e.target.checked })
+                }
+              />
+            </Col>
+          </Form.Group>
+
+          {/* Resend invitation checkbox for existing users with invitation auth method */}
+          <Form.Group
+            as={Row}
+            hidden={
+              this.isServiceAccount(this.state.role) ||
+              !this.entity.id ||
+              this.state.authMethod !== "invitation"
+            }
+          >
+            <Col sm="6">
+              <Form.Check
+                type="checkbox"
+                id="check-resendInvitation"
+                label={this.props.t("resendInvitation")}
+                checked={this.state.resendInvitation}
+                onChange={(e: any) =>
+                  this.setState({ resendInvitation: e.target.checked })
+                }
+              />
+            </Col>
+          </Form.Group>
+
+          {/* Password field */}
+          <Form.Group
+            as={Row}
+            hidden={
+              (RuntimeConfig.INFOS.disablePasswordLogin &&
+                !this.isServiceAccount(this.state.role)) ||
+              (!this.isServiceAccount(this.state.role) &&
+                this.state.authMethod !== "password")
+            }
+          >
+            <Form.Label htmlFor="password" column sm="2">
+              {this.props.t("password")}
+            </Form.Label>
+            <Col sm="4">
+              <InputGroup>
+                <Form.Control
+                  id="password"
+                  type={
+                    this.isServiceAccount(this.state.role) ? "text" : "password"
+                  }
+                  value={this.state.password}
+                  onChange={(e: any) =>
+                    this.setState({ password: e.target.value })
+                  }
+                  required={
+                    !!(
+                      this.isServiceAccount(this.state.role) ||
+                      (!this.entity.id &&
+                        this.state.authMethod === "password") ||
+                      (this.entity.id &&
+                        this.state.changePassword &&
+                        this.state.authMethod === "password")
+                    )
+                  }
+                  disabled={
+                    (!this.isServiceAccount(this.state.role) &&
+                      this.entity.id &&
+                      !this.state.changePassword) ||
+                    this.isServiceAccount(this.state.role)
+                  }
+                  minLength={
+                    this.isServiceAccount(this.state.role)
+                      ? Validation.PASSWORD_MIN_LENGTH_SA
+                      : Validation.PASSWORD_MIN_LENGTH
+                  }
+                  pattern={Validation.PASSWORD_PATTERN}
+                  title={this.props.t("passwordRequirements")}
+                />
+                <Button
+                  onClick={() => this.generatePassword()}
+                  hidden={!this.isServiceAccount(this.state.role)}
+                  variant="outline-secondary"
+                >
+                  <IconRefresh className="feather" />
+                </Button>
+                <CopyToClipboardButton
+                  text={this.state.password}
+                  hidden={!this.isServiceAccount(this.state.role)}
+                />
+              </InputGroup>
+            </Col>
+          </Form.Group>
+
+          {/* Second factor reset — only shown for existing non-service-account users */}
+          <Form.Group
+            as={Row}
+            hidden={
+              !this.entity.id ||
+              this.isServiceAccount(this.state.role) ||
+              (!this.state.hasPasskeys && !this.state.totpEnabled)
+            }
+          >
+            <Form.Label column sm="2">
+              {this.props.t("secondFactor")}
+            </Form.Label>
+            <Col sm="4" className="d-flex gap-2 align-items-center">
+              {this.state.hasPasskeys && (
+                <Button
+                  className="btn-sm"
+                  variant="outline-danger"
+                  onClick={this.resetPasskeys}
+                >
+                  <IconReset className="feather" />{" "}
+                  {this.props.t("resetPasskeys")}
+                </Button>
+              )}
+              {this.state.totpEnabled && (
+                <Button
+                  className="btn-sm"
+                  variant="outline-danger"
+                  onClick={this.resetTotp}
+                >
+                  <IconReset className="feather" /> {this.props.t("resetTotp")}
+                </Button>
+              )}
+            </Col>
+          </Form.Group>
+        </Form>
+      </FullLayout>
+    );
+  }
+}
+
+export default withTranslation(withReadyRouter(EditUser as any));

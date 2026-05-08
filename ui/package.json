@@ -1,0 +1,49 @@
+{
+  "name": "seatsurfing-ui",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@types/react-dom": "19.2.3",
+    "async-mutex": "0.5.0",
+    "bootstrap": "5.3.8",
+    "excellentexport": "3.9.11",
+    "moment-timezone": "0.6.1",
+    "next": "16.2.3",
+    "next-export-i18n": "2.4.3",
+    "react": "19.2.4",
+    "react-big-calendar": "1.19.4",
+    "react-bootstrap": "2.10.10",
+    "react-bootstrap-typeahead": "6.4.1",
+    "react-dom": "19.2.4",
+    "react-feather": "2.0.10",
+    "react-flatpickr": "4.0.11",
+    "react-icons": "5.6.0",
+    "react-rnd": "10.5.3",
+    "react-tooltip": "5.30.0",
+    "react-zoom-pan-pinch": "3.7.0",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "start": "PORT=3003 next start",
+    "build": "rm -rf ./build/ && next build && cd build && find . -name '\\[*\\]' | cut -c2- | jq -R | jq -s > _attr.json",
+    "dev": "PORT=3003 NEXT_PUBLIC_PRODUCT_VERSION=0.0.1-dev next dev",
+    "lint": "next lint",
+    "prettier:check": "prettier --check \"../**/*.{tsx,js,css,cjs,json,mjs,html,yml,yaml,ts,scss,md}\"",
+    "prettier:format": "prettier --write \"../**/*.{tsx,js,css,cjs,json,mjs,html,yml,yaml,ts,scss,md}\"",
+    "test": "vitest"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "homepage": "/ui/",
+  "devDependencies": {
+    "@types/node": "25.5.2",
+    "@types/react-big-calendar": "1.16.3",
+    "eslint": "10.2.0",
+    "eslint-config-next": "16.2.2",
+    "jsdom": "29.0.1",
+    "prettier": "3.8.1",
+    "vite-tsconfig-paths": "6.1.1",
+    "vitest": "4.1.2"
+  }
+}

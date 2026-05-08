@@ -1,0 +1,838 @@
+package test
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"testing"
+
+	"github.com/google/uuid"
+
+	. "github.com/seatsurfing/seatsurfing/server/api"
+	. "github.com/seatsurfing/seatsurfing/server/repository"
+	. "github.com/seatsurfing/seatsurfing/server/router"
+	. "github.com/seatsurfing/seatsurfing/server/testutil"
+)
+
+func TestUserCRUD(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	// 1. Create
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	userID := res.Header().Get("X-Object-Id")
+
+	// 2. Read
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestString(t, username, resBody.Email)
+	CheckTestString(t, "John", resBody.Firstname)
+	CheckTestString(t, "Doe", resBody.Lastname)
+	CheckTestString(t, org.ID, resBody.OrganizationID)
+	CheckTestString(t, "", resBody.AuthProviderID)
+	CheckTestBool(t, true, resBody.RequirePassword)
+	CheckTestInt(t, int(UserRoleOrgAdmin), resBody.Role)
+	CheckTestBool(t, true, resBody.SpaceAdmin)
+	CheckTestBool(t, true, resBody.OrgAdmin)
+	CheckTestBool(t, false, resBody.SuperAdmin)
+
+	// 3. Update
+	username = uuid.New().String() + "@test.com"
+	payload = "{\"email\": \"" + username + "\", \"firstname\": \"John2\", \"lastname\": \"Doe2\", \"password\": \"\", \"role\": " + strconv.Itoa(int(UserRoleSpaceAdmin)) + "}"
+	req = NewHTTPRequest("PUT", "/user/"+userID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Read
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody2 *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody2)
+	CheckTestString(t, username, resBody2.Email)
+	CheckTestString(t, "John2", resBody2.Firstname)
+	CheckTestString(t, "Doe2", resBody2.Lastname)
+	CheckTestString(t, org.ID, resBody2.OrganizationID)
+	CheckTestString(t, "", resBody2.AuthProviderID)
+	CheckTestBool(t, true, resBody2.RequirePassword)
+	CheckTestInt(t, int(UserRoleSpaceAdmin), resBody2.Role)
+	CheckTestBool(t, true, resBody2.SpaceAdmin)
+	CheckTestBool(t, false, resBody2.OrgAdmin)
+	CheckTestBool(t, false, resBody2.SuperAdmin)
+
+	// 4. Delete
+	req = NewHTTPRequest("DELETE", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Read
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNotFound, res.Code)
+}
+
+func TestPreventSelfDeletion(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	req := NewHTTPRequest("DELETE", "/user/"+user.ID, loginResponse.UserID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUpdateInvalidAuthProviderId(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	invalidAuthProviderID := uuid.New().String()
+	payload := "{\"email\": \"" + user.Email + "\", \"firstname\": \"John2\", \"lastname\": \"Doe2\", \"authProviderId\": \"" + invalidAuthProviderID + "\", \"role\": " + strconv.Itoa(int(UserRoleSpaceAdmin)) + "}"
+	req := NewHTTPRequest("PUT", "/user/"+user.ID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+}
+
+func TestUserForbidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	// 1. Create
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\"}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+
+	// 2. Read
+	req = NewHTTPRequest("GET", "/user/"+user.ID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+
+	// 3. Update
+	req = NewHTTPRequest("PUT", "/user/"+user.ID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+
+	// 4. Delete
+	req = NewHTTPRequest("DELETE", "/user/"+user.ID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserSetPassword(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	payload := `{"password": "` + TestPassword + `"}`
+	req := NewHTTPRequest("PUT", "/user/"+user.ID+"/password", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	user2, err := GetUserRepository().GetOne(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	CheckTestBool(t, true, GetUserRepository().CheckPassword(string(user2.HashedPassword), TestPassword))
+}
+
+func TestUserSubscriptionExceeded(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	for i := 1; i <= DefaultUserLimit; i++ {
+		username := uuid.New().String() + "@test.com"
+		payload := "{\"email\": \"" + username + "\", \"password\": \"" + TestPassword + "\", \"firstname\": \"John\", \"lastname\": \"Doe\"}"
+		req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+		res := ExecuteTestRequest(req)
+		if i < DefaultUserLimit {
+			CheckTestResponseCode(t, http.StatusCreated, res.Code)
+		} else {
+			CheckTestResponseCode(t, http.StatusPaymentRequired, res.Code)
+		}
+	}
+}
+
+func TestUserGetCount(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	req := NewHTTPRequest("GET", "/user/count", loginResponse.UserID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserCountResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, resBody.Count)
+}
+
+func TestUserMergeUsers(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	source := CreateTestUserInOrg(org)
+	target := CreateTestUserInOrg(org)
+
+	// Prepare source
+	source.AtlassianID = NullString(source.Email)
+	GetUserRepository().Update(source)
+
+	// Init from source
+	loginResponseSource := LoginTestUser(source.ID)
+	payload := "{\"email\": \"" + target.Email + "\"}"
+	req := NewHTTPRequest("POST", "/user/merge/init", loginResponseSource.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Get merge request list from target
+	loginResponseTarget := LoginTestUser(target.ID)
+	req = NewHTTPRequest("GET", "/user/merge", loginResponseTarget.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []GetMergeRequestResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, len(resBody))
+	CheckTestString(t, source.ID, resBody[0].UserID)
+	CheckTestString(t, source.Email, resBody[0].Email)
+
+	// Complete from target
+	req = NewHTTPRequest("POST", "/user/merge/finish/"+resBody[0].ID, loginResponseTarget.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Check if source user is gone
+	user, err := GetUserRepository().GetOne(source.ID)
+	if err == nil || user != nil {
+		t.Fatal("Expected source user to be deleted")
+	}
+
+	// Check if target user has inherited source user's properties
+	user, err = GetUserRepository().GetOne(target.ID)
+	if err != nil || user == nil {
+		t.Fatal("Expected source user to be deleted")
+	}
+	CheckTestString(t, string(source.AtlassianID), string(user.AtlassianID))
+
+	// Check if request is invalid now
+	req = NewHTTPRequest("POST", "/user/merge/finish/"+resBody[0].ID, loginResponseTarget.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNotFound, res.Code)
+}
+
+// TODO test domain in org!
+
+func TestUserCreateForeignOrgSuperAdmin(t *testing.T) {
+	ClearTestDB()
+	superAdmin := CreateTestUserSuperAdmin()
+	org2 := CreateTestOrg("test2.com")
+	loginResponse := LoginTestUser(superAdmin.ID)
+
+	username := uuid.New().String() + "@test2.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"organizationId\": \"" + org2.ID + "\"}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestUserCreateForeignOrgOrgAdmin(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test1.com")
+	admin := CreateTestUserOrgAdmin(org)
+	org2 := CreateTestOrg("test2.com")
+	loginResponse := LoginTestUser(admin.ID)
+
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"organizationId\": \"" + org2.ID + "\"}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserForeignEmail(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	username := uuid.New().String() + "@gmail.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestUserDuplicateSameOrg(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	username := uuid.New().String() + "@gmail.com"
+
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	payload = "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req = NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusConflict, res.Code)
+	CheckTestString(t, strconv.Itoa(ResponseCodeUserAlreadyExists), res.Header().Get("X-Error-Code"))
+}
+
+func TestUserDuplicateDifferentOrg(t *testing.T) {
+	ClearTestDB()
+	org1 := CreateTestOrg("test1.com")
+	user1 := CreateTestUserOrgAdmin(org1)
+	org2 := CreateTestOrg("test2.com")
+	user2 := CreateTestUserOrgAdmin(org2)
+
+	username := uuid.New().String() + "@gmail.com"
+
+	loginResponse1 := LoginTestUser(user1.ID)
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse1.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	loginResponse2 := LoginTestUser(user2.ID)
+	payload = "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req = NewHTTPRequest("POST", "/user/", loginResponse2.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestUserUpdateCreatesDuplicate(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	username1 := uuid.New().String() + "@gmail.com"
+	username2 := uuid.New().String() + "@gmail.com"
+
+	payload := "{\"email\": \"" + username1 + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	payload = "{\"email\": \"" + username2 + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req = NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	userID2 := res.Header().Get("X-Object-Id")
+
+	payload = "{\"email\": \"" + username1 + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"\", \"role\": " + strconv.Itoa(int(UserRoleSpaceAdmin)) + "}"
+	req = NewHTTPRequest("PUT", "/user/"+userID2, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusConflict, res.Code)
+	CheckTestString(t, strconv.Itoa(ResponseCodeUserAlreadyExists), res.Header().Get("X-Error-Code"))
+}
+
+func TestUserCreateInOwnOrgsVerifiedDomain(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetOrganizationRepository().AddDomain(org, "gmail.com", true)
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	username := uuid.New().String() + "@gmail.com"
+
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestUserListWithServiceAccount(t *testing.T) {
+	ClearTestDB()
+
+	org := CreateTestOrg("test.com")
+	user := &User{
+		Email:          "sa@test.com",
+		OrganizationID: org.ID,
+		Role:           UserRoleServiceAccountRO,
+		HashedPassword: NullString(GetUserRepository().GetHashedPassword(TestPassword)),
+	}
+	if err := GetUserRepository().Create(user); err != nil {
+		t.Fatal(err)
+	}
+	CreateTestUserInOrg(org)
+
+	req, _ := http.NewRequest("GET", "/user/", nil)
+	req.SetBasicAuth(org.ID+"_sa@test.com", TestPassword)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 2, len(resBody))
+}
+
+func TestUserCreateWithServiceAccount(t *testing.T) {
+	ClearTestDB()
+
+	org := CreateTestOrg("test.com")
+	user := &User{
+		Email:          "sa@test.com",
+		OrganizationID: org.ID,
+		Role:           UserRoleServiceAccountRW,
+		HashedPassword: NullString(GetUserRepository().GetHashedPassword(TestPassword)),
+	}
+	if err := GetUserRepository().Create(user); err != nil {
+		t.Fatal(err)
+	}
+	CreateTestUserInOrg(org)
+
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req, _ := http.NewRequest("POST", "/user/", bytes.NewBufferString(payload))
+	req.SetBasicAuth(org.ID+"_sa@test.com", TestPassword)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestUserCreateWithROServiceAccount(t *testing.T) {
+	ClearTestDB()
+
+	org := CreateTestOrg("test.com")
+	user := &User{
+		Email:          "sa@test.com",
+		OrganizationID: org.ID,
+		Role:           UserRoleServiceAccountRO,
+		HashedPassword: NullString(GetUserRepository().GetHashedPassword(TestPassword)),
+	}
+	if err := GetUserRepository().Create(user); err != nil {
+		t.Fatal(err)
+	}
+	CreateTestUserInOrg(org)
+
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleOrgAdmin)) + "}"
+	req, _ := http.NewRequest("POST", "/user/", bytes.NewBufferString(payload))
+	req.SetBasicAuth(org.ID+"_sa@test.com", TestPassword)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusUnauthorized, res.Code)
+}
+
+func TestUserCreateWithInvitation(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	// Create user with invitation
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"sendInvitation\": true, \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	userID := res.Header().Get("X-Object-Id")
+
+	// Read user and check passwordPending is true
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestString(t, username, resBody.Email)
+	CheckTestBool(t, true, resBody.PasswordPending)
+	CheckTestBool(t, false, resBody.RequirePassword)
+	CheckTestString(t, "", resBody.AuthProviderID)
+
+	// Verify auth state was created
+	newUser, _ := GetUserRepository().GetOne(userID)
+	authStates, _ := GetAuthStateRepository().GetByAuthProviderID(GetSettingsRepository().GetNullUUID())
+	foundAuthState := false
+	for _, state := range authStates {
+		if state.AuthStateType == AuthInviteUser {
+			foundAuthState = true
+			break
+		}
+	}
+	CheckTestBool(t, true, foundAuthState)
+	CheckTestBool(t, true, newUser != nil)
+}
+
+func TestUserUpdateAuthMethod(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	// Create auth provider
+	GetSettingsRepository().Set(org.ID, SettingFeatureAuthProviders.Name, "1")
+	authProvider := &AuthProvider{
+		OrganizationID: org.ID,
+		Name:           "TestProvider",
+		ProviderType:   int(OAuth2),
+	}
+	GetAuthProviderRepository().Create(authProvider)
+
+	// 1. Create user with password
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	userID := res.Header().Get("X-Object-Id")
+
+	// Verify password auth
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody1 *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody1)
+	CheckTestBool(t, true, resBody1.RequirePassword)
+	CheckTestBool(t, false, resBody1.PasswordPending)
+	CheckTestString(t, "", resBody1.AuthProviderID)
+
+	// 2. Update to auth provider
+	payload = "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"authProviderId\": \"" + authProvider.ID + "\", \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req = NewHTTPRequest("PUT", "/user/"+userID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify provider auth
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody2 *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody2)
+	CheckTestBool(t, false, resBody2.RequirePassword)
+	CheckTestBool(t, false, resBody2.PasswordPending)
+	CheckTestString(t, authProvider.ID, resBody2.AuthProviderID)
+
+	// 3. Update to invitation
+	payload = "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"sendInvitation\": true, \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req = NewHTTPRequest("PUT", "/user/"+userID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify invitation auth
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody3 *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody3)
+	CheckTestBool(t, false, resBody3.RequirePassword)
+	CheckTestBool(t, true, resBody3.PasswordPending)
+	CheckTestString(t, "", resBody3.AuthProviderID)
+}
+
+func TestUserCompleteInvitation(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	// Create user with invitation
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"sendInvitation\": true, \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	userID := res.Header().Get("X-Object-Id")
+
+	// Find auth state
+	authStates, _ := GetAuthStateRepository().GetByAuthProviderID(GetSettingsRepository().GetNullUUID())
+	var invitationState *AuthState
+	for _, state := range authStates {
+		if state.AuthStateType == AuthInviteUser {
+			invitationState = state
+			break
+		}
+	}
+	CheckTestBool(t, true, invitationState != nil)
+
+	// Complete invitation
+	payload = "{\"password\": \"" + TestPasswordNew + "\"}"
+	req = NewHTTPRequest("POST", "/auth/setpw/"+invitationState.ID, "", bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify passwordPending is now false and password is set
+	newUser, _ := GetUserRepository().GetOne(userID)
+	CheckTestBool(t, false, newUser.PasswordPending)
+	CheckTestBool(t, true, newUser.HashedPassword != "")
+	CheckTestBool(t, true, GetUserRepository().CheckPassword(string(newUser.HashedPassword), TestPasswordNew))
+
+	// Verify auth state was deleted
+	_, err := GetAuthStateRepository().GetOne(invitationState.ID)
+	CheckTestBool(t, true, err != nil)
+
+	// Verify user can log in with new password
+	loginPayload := "{ \"email\": \"" + username + "\", \"password\": \"" + TestPasswordNew + "\", \"organizationId\": \"" + org.ID + "\" }"
+	req = NewHTTPRequest("POST", "/auth/login", "", bytes.NewBufferString(loginPayload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+}
+
+func TestUserGetActiveSessions(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	req := NewHTTPRequest("GET", "/user/session", user.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []GetSessionResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	if resBody == nil {
+		t.Fatalf("Expected array response")
+	}
+}
+
+func TestUserGetSelf(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	req := NewHTTPRequest("GET", "/user/me", user.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestString(t, user.ID, resBody.ID)
+}
+
+func TestUserGetByEmailForbiddenWhenNamesHidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user1 := CreateTestUserInOrg(org)
+	user2 := CreateTestUserInOrg(org)
+
+	// showNames defaults to false → 403
+	req := NewHTTPRequest("GET", "/user/byEmail/"+user2.Email, user1.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserGetByEmailNotFound(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+
+	// Admin can use getOneByEmail because CanSpaceAdminOrg=true; but user not found → 404
+	req := NewHTTPRequest("GET", "/user/byEmail/nobody@example.com", admin.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNotFound, res.Code)
+}
+
+func TestUserGetByEmailSelf(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+
+	// Admin looking up their own email → 404 (self lookup returns not found per handler)
+	req := NewHTTPRequest("GET", "/user/byEmail/"+admin.Email, admin.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNotFound, res.Code)
+}
+
+func TestUserCountForbidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	req := NewHTTPRequest("GET", "/user/count", user.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserCount(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+
+	req := NewHTTPRequest("GET", "/user/count", admin.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody GetUserCountResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	if resBody.Count < 1 {
+		t.Fatalf("Expected count >= 1, got %d", resBody.Count)
+	}
+}
+
+func TestUserAdminResetPasskeysForbidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	user := CreateTestUserInOrg(org)
+
+	// Regular user tries to reset another user's passkeys → 403
+	req := NewHTTPRequest("DELETE", "/user/"+admin.ID+"/passkeys", user.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserAdminResetPasskeysNotFound(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+
+	fakeID := "00000000-0000-0000-0000-000000000001"
+	req := NewHTTPRequest("DELETE", "/user/"+fakeID+"/passkeys", admin.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNotFound, res.Code)
+}
+
+func TestUserAdminResetTotpForbidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	user := CreateTestUserInOrg(org)
+
+	// Regular user tries to reset another user's TOTP → 403
+	req := NewHTTPRequest("DELETE", "/user/"+admin.ID+"/totp", user.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserSetPasswordForbidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user1 := CreateTestUserInOrg(org)
+	user2 := CreateTestUserInOrg(org)
+
+	// user1 tries to set user2's password → 403
+	payload := `{"password": "` + TestPasswordNew + `"}`
+	req := NewHTTPRequest("PUT", "/user/"+user2.ID+"/password", user1.ID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserSetOwnPassword(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	// User sets their own password → 204
+	payload := `{"password": "` + TestPasswordNew + `"}`
+	req := NewHTTPRequest("PUT", "/user/"+user.ID+"/password", user.ID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+}
+
+func TestUserSetOwnPasswordNotComplexEnough(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	// User sets their own password → 204
+	payload := `{"password": "simplepassword"}`
+	req := NewHTTPRequest("PUT", "/user/"+user.ID+"/password", user.ID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+}
+
+func TestPreventSelfRoleChange(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	// Try to change own role from OrgAdmin to User
+	payload := "{\"email\": \"" + user.Email + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"\", \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req := NewHTTPRequest("PUT", "/user/"+user.ID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify role was NOT changed
+	req = NewHTTPRequest("GET", "/user/"+user.ID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, int(UserRoleOrgAdmin), resBody.Role)
+}
+
+func TestPreventSelfRoleChangeToServiceAccount(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	// Try to change own role from OrgAdmin to ServiceAccountRO
+	payload := "{\"email\": \"" + user.Email + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"\", \"role\": " + strconv.Itoa(int(UserRoleServiceAccountRO)) + "}"
+	req := NewHTTPRequest("PUT", "/user/"+user.ID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify role was NOT changed
+	req = NewHTTPRequest("GET", "/user/"+user.ID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, int(UserRoleOrgAdmin), resBody.Role)
+}
+
+func TestPreventSelfRoleChangeToSpaceAdmin(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	// Try to change own role from OrgAdmin to SpaceAdmin
+	payload := "{\"email\": \"" + user.Email + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"\", \"role\": " + strconv.Itoa(int(UserRoleSpaceAdmin)) + "}"
+	req := NewHTTPRequest("PUT", "/user/"+user.ID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify role was NOT changed
+	req = NewHTTPRequest("GET", "/user/"+user.ID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, int(UserRoleOrgAdmin), resBody.Role)
+}
+
+func TestAllowRoleChangeForOtherUser(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	// Create another user
+	username := uuid.New().String() + "@test.com"
+	payload := "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"" + TestPassword + "\", \"role\": " + strconv.Itoa(int(UserRoleUser)) + "}"
+	req := NewHTTPRequest("POST", "/user/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	userID := res.Header().Get("X-Object-Id")
+
+	// Change other user's role from User to SpaceAdmin
+	payload = "{\"email\": \"" + username + "\", \"firstname\": \"John\", \"lastname\": \"Doe\", \"password\": \"\", \"role\": " + strconv.Itoa(int(UserRoleSpaceAdmin)) + "}"
+	req = NewHTTPRequest("PUT", "/user/"+userID, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	// Verify role WAS changed
+	req = NewHTTPRequest("GET", "/user/"+userID, loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *GetUserResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, int(UserRoleSpaceAdmin), resBody.Role)
+}

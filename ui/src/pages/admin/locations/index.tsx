@@ -1,0 +1,188 @@
+import React from "react";
+import { Table } from "react-bootstrap";
+import {
+  Plus as IconPlus,
+  Download as IconDownload,
+  Tag as IconTag,
+} from "react-feather";
+import FullLayout from "@/components/FullLayout";
+import { NextRouter } from "next/router";
+import Link from "next/link";
+import Loading from "@/components/Loading";
+import withReadyRouter from "@/components/withReadyRouter";
+import { TranslationFunc, withTranslation } from "@/components/withTranslation";
+import Ajax from "@/util/Ajax";
+import Location from "@/types/Location";
+import RedirectUtil from "@/util/RedirectUtil";
+import RendererUtils from "@/util/RendererUtils";
+import Navigation from "@/util/Navigation";
+import CopyToClipboardButton from "@/components/CopyToClipboardButton";
+
+interface State {
+  selectedItem: string;
+  loading: boolean;
+}
+
+interface Props {
+  router: NextRouter;
+  t: TranslationFunc;
+}
+
+class Locations extends React.Component<Props, State> {
+  data: Location[] = [];
+  ExcellentExport: any;
+
+  constructor(props: any) {
+    super(props);
+    this.state = {
+      selectedItem: "",
+      loading: true,
+    };
+  }
+
+  componentDidMount = () => {
+    if (!Ajax.hasAccessToken()) {
+      RedirectUtil.toLogin(this.props.router);
+      return;
+    }
+    import("excellentexport").then(
+      (imp) => (this.ExcellentExport = imp.default),
+    );
+    this.loadItems();
+  };
+
+  loadItems = () => {
+    Location.list().then((list) => {
+      this.data = list;
+      this.setState({ loading: false });
+    });
+  };
+
+  onItemSelect = (location: Location) => {
+    this.setState({ selectedItem: location.id });
+  };
+
+  renderItem = (location: Location) => {
+    const bookingLinkUrl = Navigation.locationAbsolute(location.id);
+    return (
+      <tr
+        key={location.id}
+        onClick={() => this.onItemSelect(location)}
+        title={location.description}
+      >
+        <td>{location.name}</td>
+        <td>{RendererUtils.state(location.enabled)}</td>
+        <td>
+          {location.mapWidth}&nbsp;&times;&nbsp;{location.mapHeight}
+        </td>
+        <td>
+          {RendererUtils.state(location.allowedBookerGroupIds?.length > 0)}
+        </td>
+        <td>
+          <a href={bookingLinkUrl} target="_blank" rel="noopener noreferrer">
+            {RendererUtils.shortenLink(bookingLinkUrl, 40)}
+          </a>
+          <CopyToClipboardButton text={bookingLinkUrl} small={true} />
+        </td>
+      </tr>
+    );
+  };
+
+  exportTable = (e: any) => {
+    const t = this.props.t;
+    const headers = [
+      t("name"),
+      t("enabled"),
+      t("map"),
+      t("allowBookers"),
+      t("bookingLink"),
+    ];
+    const rows = this.data.map((loc) => [
+      loc.name,
+      RendererUtils.stateXls(loc.enabled, t),
+      `${loc.mapWidth} x ${loc.mapHeight}`,
+      RendererUtils.stateXls(loc.allowedBookerGroupIds?.length > 0, t),
+      Navigation.locationAbsolute(loc.id),
+    ]);
+    return this.ExcellentExport.convert(
+      { anchor: e.target, filename: "ideskbooking-areas", format: "xlsx" },
+      [{ name: "iDeskBooking Areas", from: { array: [headers, ...rows] } }],
+    );
+  };
+
+  render() {
+    if (this.state.selectedItem) {
+      this.props.router.push(`/admin/locations/${this.state.selectedItem}`);
+      return <></>;
+    }
+
+    // eslint-disable-next-line
+    let downloadButton = (
+      <a
+        download="ideskbooking-areas.xlsx"
+        href="#"
+        className="btn btn-sm btn-outline-secondary"
+        onClick={this.exportTable}
+      >
+        <IconDownload className="feather" /> {this.props.t("download")}
+      </a>
+    );
+    let buttons = (
+      <>
+        {this.data && this.data.length > 0 ? downloadButton : <></>}
+        <Link
+          href="/admin/attributes"
+          className="btn btn-sm btn-outline-secondary"
+        >
+          <IconTag className="feather" /> {this.props.t("attributes")}
+        </Link>
+        <Link
+          href="/admin/locations/add"
+          className="btn btn-sm btn-outline-secondary"
+        >
+          <IconPlus className="feather" /> {this.props.t("add")}
+        </Link>
+      </>
+    );
+
+    if (this.state.loading) {
+      return (
+        <FullLayout headline={this.props.t("areas")} buttons={buttons}>
+          <Loading />
+        </FullLayout>
+      );
+    }
+
+    let rows = this.data.map((item) => this.renderItem(item));
+    if (rows.length === 0) {
+      return (
+        <FullLayout headline={this.props.t("areas")} buttons={buttons}>
+          <p>{this.props.t("noRecords")}</p>
+        </FullLayout>
+      );
+    }
+    return (
+      <FullLayout headline={this.props.t("areas")} buttons={buttons}>
+        <Table
+          striped={true}
+          hover={true}
+          className="clickable-table"
+          id="datatable"
+        >
+          <thead>
+            <tr>
+              <th>{this.props.t("name")}</th>
+              <th>{this.props.t("enabled")}</th>
+              <th>{this.props.t("map")}</th>
+              <th>{this.props.t("allowBookers")}</th>
+              <th>{this.props.t("bookingLink")}</th>
+            </tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </Table>
+      </FullLayout>
+    );
+  }
+}
+
+export default withTranslation(withReadyRouter(Locations as any));

@@ -1,0 +1,17 @@
+{
+  "subject": "Zurücksetzen deines iDeskBooking-Kennworts",
+  "headline": "Hallo {{recipientName}},",
+  "paragraphs": [
+    "wir haben eine Anfrage zum Zurücksetzen deines Kennworts erhalten."
+  ],
+  "buttons": [
+    {
+      "paragraph": "Wenn diese Anfrage von dir stammt, kannst du dein Kennwort hier ändern:",
+      "label": "Kennwort ändern",
+      "url": "{{orgDomain}}ui/resetpw/{{confirmID}}/"
+    }
+  ],
+  "finalParagraphs": [
+    "Wenn du keine Anfrage zur Änderung deines Kennworts initiiert hast, kannst du diese Mail gefahrlos ignorieren. Wir werden dein Kennwort nicht ändern, wenn du den oben stehenden Link nicht anklickst."
+  ]
+}

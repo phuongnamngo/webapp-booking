@@ -1,0 +1,15 @@
+.DS_Store
+.eslintcache
+docker-readme-modified.md
+.vscode/
+node_modules/
+
+.cursor/
+.agent/
+openspec/
+.claude/
+.env
+
+# Mempalace
+mempalace.yaml
+entities.json

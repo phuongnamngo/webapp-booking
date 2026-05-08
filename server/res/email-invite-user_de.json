@@ -1,0 +1,17 @@
+{
+  "subject": "Willkommen bei iDeskBooking - Kennwort festlegen",
+  "headline": "Hallo {{recipientName}},",
+  "paragraphs": [
+    "du wurdest zu iDeskBooking eingeladen. Um loszulegen, lege bitte ein Kennwort fest."
+  ],
+  "buttons": [
+    {
+      "paragraph": "Klicke auf die Schaltfläche unten, um ein Kennwort festzulegen:",
+      "label": "Kennwort festlegen",
+      "url": "{{orgDomain}}ui/setpw/{{confirmID}}/"
+    }
+  ],
+  "finalParagraphs": [
+    "Wenn du diese Einladung nicht erwartet hast, kannst du diese E-Mail gefahrlos ignorieren."
+  ]
+}

@@ -1,0 +1,237 @@
+export default class DateUtil {
+  static MS_PER_MINUTE = 1000 * 60;
+  static MS_PER_HOUR = DateUtil.MS_PER_MINUTE * 60;
+  static MS_PER_DAY = DateUtil.MS_PER_HOUR * 24;
+
+  /**
+   * @param date Date object to format
+   * @returns formatted date string in "YYYY-MM-DD" format
+   */
+  private static formatToDateString(date: Date): string {
+    return date.toISOString().split("T")[0];
+  }
+
+  /**
+   * This methods formats a given date in the format "YYYY-MM-DDTHH:MM"
+   * and ignores the date's timezone.
+   *
+   * @param date Date object to format
+   * @returns formatted date string in "YYYY-MM-DDTHH:MM" (ISO 8601) format
+   */
+  static formatToDateTimeString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  /**
+   * @param s string to test
+   * @returns true if string is in data format "YYYY-MM-DD"
+   */
+  static isValidDate(s: string): boolean {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!regex.test(s)) return false;
+
+    const date = new Date(s);
+    const timestamp = date.getTime();
+
+    if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
+      return false;
+    }
+
+    return s === this.formatToDateString(date);
+  }
+
+  /**
+   * @param s string to test
+   * @returns true if string is in data format "YYYY-MM-DDTHH:MM"
+   */
+  static isValidDateTime(s: string): boolean {
+    const regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+    if (!regex.test(s)) {
+      return false;
+    }
+
+    const date = new Date(s);
+    return !isNaN(date.getTime());
+  }
+
+  static getTodayDateString(): string {
+    return this.getDateString(0);
+  }
+
+  static convertToUTC = (date: Date): Date => {
+    return new Date(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      date.getUTCHours(),
+      date.getUTCMinutes(),
+      date.getUTCSeconds(),
+      0,
+    );
+  };
+
+  static convertToFakeUTCDate(d: Date): Date {
+    return new Date(
+      Date.UTC(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        d.getHours(),
+        d.getMinutes(),
+        d.getSeconds(),
+        0,
+      ),
+    );
+  }
+
+  static isInPast(date: Date): boolean {
+    return this.convertToUTC(date) < new Date();
+  }
+
+  /**
+   * @param offset Offset in days
+   * @returns return the date in format "YYYY-MM-DD"
+   */
+  static getDateString(offset: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    return this.formatToDateString(date);
+  }
+
+  static getLastWeekMondayDateString(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1) - 7);
+    return this.formatToDateString(d);
+  }
+
+  static getLastWeekSundayDateString(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1) - 1);
+    return this.formatToDateString(d);
+  }
+
+  static getThisWeekMondayDateString(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
+    return this.formatToDateString(d);
+  }
+
+  static getThisWeekSundayDateString(): string {
+    const d = new Date();
+    d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1) + 6);
+    return this.formatToDateString(d);
+  }
+
+  /**
+   * @param date Date to modify
+   * @returns new Date with the seconds set to a maximum (59.999)
+   */
+  static setSecondsToMax(date: Date): Date {
+    const dateMaxSeconds = new Date(date);
+    dateMaxSeconds.setSeconds(59, 999);
+    return dateMaxSeconds;
+  }
+
+  /**
+   * @param date Date to modify
+   * @returns new Date with the hours set to a maximum (23:59:59.999)
+   */
+  static setHoursToMax(date: Date): Date {
+    const dateMaxHours = new Date(date);
+    dateMaxHours.setHours(23, 59, 59, 999);
+    return dateMaxHours;
+  }
+
+  /**
+   * @param date Date to modify
+   * @returns new Date with the hours set to a minimum (00:00:00.000)
+   */
+  static setHoursToMin(date: Date): Date {
+    const dateMaxHours = new Date(date);
+    dateMaxHours.setHours(0, 0, 0, 0);
+    return dateMaxHours;
+  }
+
+  /**
+   * @returns Today's date with time 00:00:00.000
+   */
+  static getTodayStart(): Date {
+    return this.setHoursToMin(new Date());
+  }
+
+  /**
+   * @returns Today's date with time 23:59:59.999
+   */
+  static getTodayEnd(): Date {
+    return this.setHoursToMax(new Date());
+  }
+
+  /**
+   * @returns Today's date with time 23:59:59.999
+   */
+  static getTodayTime(hour: number, minute: number, second: number): Date {
+    const todayTime = new Date();
+    todayTime.setHours(hour, minute, second, 0);
+    return todayTime;
+  }
+
+  static copyDate(source: Date, target: Date): Date {
+    const result = new Date(target);
+    result.setFullYear(
+      source.getFullYear(),
+      source.getMonth(),
+      source.getDate(),
+    );
+    return result;
+  }
+
+  static copyTime(source: Date, target: Date): Date {
+    const result = new Date(target);
+    result.setHours(
+      source.getHours(),
+      source.getMinutes(),
+      source.getSeconds(),
+      source.getMilliseconds(),
+    );
+    return result;
+  }
+
+  /**
+   * @param date1 Date1 to compare
+   * @param date2 Date2 to compare
+   * @returns true, if both dates are on the same day
+   */
+  static isSameDay(date1: Date, date2: Date): boolean {
+    return (
+      date1.getFullYear() === date2.getFullYear() &&
+      date1.getMonth() === date2.getMonth() &&
+      date1.getDate() === date2.getDate()
+    );
+  }
+
+  static equal(date1: Date, date2: Date): boolean {
+    return date1.getTime() === date2.getTime();
+  }
+
+  static prevDay(date: Date): Date {
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() - 1);
+    return nextDay;
+  }
+
+  static nextDay(date: Date): Date {
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+    return nextDay;
+  }
+
+  static getNowFakeUTC(): Date {
+    return this.convertToFakeUTCDate(new Date());
+  }
+}
