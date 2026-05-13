@@ -1,6 +1,19 @@
 import { Entity } from "./Entity";
 import Ajax from "../util/Ajax";
 
+const officeClockPattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function isValidOfficeHoursRange(
+  workStartTime: string,
+  workEndTime: string,
+): boolean {
+  return (
+    officeClockPattern.test(workStartTime) &&
+    officeClockPattern.test(workEndTime) &&
+    workStartTime < workEndTime
+  );
+}
+
 export default class Settings extends Entity {
   name: string;
   value: string;
@@ -52,5 +65,41 @@ export default class Settings extends Entity {
 
   static async getOne(name: string): Promise<string> {
     return Ajax.get("/setting/" + name).then((res) => res.json);
+  }
+}
+
+export class OfficeSettings {
+  workStartTime: string;
+  workEndTime: string;
+
+  constructor(workStartTime?: string, workEndTime?: string) {
+    this.workStartTime = workStartTime ? workStartTime : "";
+    this.workEndTime = workEndTime ? workEndTime : "";
+  }
+
+  serialize(): Object {
+    return {
+      workStartTime: this.workStartTime,
+      workEndTime: this.workEndTime,
+    };
+  }
+
+  deserialize(input: any): void {
+    this.workStartTime = input.workStartTime || "";
+    this.workEndTime = input.workEndTime || "";
+  }
+
+  async save(): Promise<void> {
+    return Ajax.putData("/setting/office-hours", this.serialize()).then(
+      () => undefined,
+    );
+  }
+
+  static async get(): Promise<OfficeSettings> {
+    return Ajax.get("/setting/office-hours").then((result) => {
+      const settings = new OfficeSettings();
+      settings.deserialize(result.json);
+      return settings;
+    });
   }
 }

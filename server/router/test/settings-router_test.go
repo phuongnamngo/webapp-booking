@@ -58,8 +58,6 @@ func TestSettingsReadPublic(t *testing.T) {
 		SettingDailyBasisBooking.Name,
 		SettingNoAdminRestrictions.Name,
 		SettingShowNames.Name,
-		SettingMaxHoursPartiallyBooked.Name,
-		SettingMaxHoursPartiallyBookedEnabled.Name,
 		SettingMinBookingDurationHours.Name,
 		SettingAllowBookingsNonExistingUsers.Name,
 		SettingDefaultTimezone.Name,
@@ -79,6 +77,8 @@ func TestSettingsReadPublic(t *testing.T) {
 		SettingAllowAnyUser.Name,
 		SettingConfluenceServerSharedSecret.Name,
 		SettingConfluenceAnonymous.Name,
+		"max_hours_partially_booked",
+		"max_hours_partially_booked_enabled",
 	}
 
 	for _, name := range allowedSettings {
@@ -128,8 +128,6 @@ func TestSettingsReadAdmin(t *testing.T) {
 		SettingNoAdminRestrictions.Name,
 		SettingShowNames.Name,
 		SettingEnableMaxHourBeforeDelete.Name,
-		SettingMaxHoursPartiallyBooked.Name,
-		SettingMaxHoursPartiallyBookedEnabled.Name,
 		SettingAllowBookingsNonExistingUsers.Name,
 		SettingAllowAnyUser.Name,
 		SettingConfluenceServerSharedSecret.Name,
@@ -155,6 +153,8 @@ func TestSettingsReadAdmin(t *testing.T) {
 	}
 	forbiddenSettings := []string{
 		SettingDatabaseVersion.Name,
+		"max_hours_partially_booked",
+		"max_hours_partially_booked_enabled",
 	}
 
 	for _, name := range allowedSettings {
@@ -215,6 +215,54 @@ func TestSettingsCRUD(t *testing.T) {
 	var resBody2 string
 	json.Unmarshal(res.Body.Bytes(), &resBody2)
 	CheckTestString(t, "0", resBody2)
+}
+
+func TestSettingsOfficeHoursCRUD(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	payload := `{"workStartTime": "08:00", "workEndTime": "17:00"}`
+	req := NewHTTPRequest("PUT", "/setting/office-hours", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	req = NewHTTPRequest("GET", "/setting/office-hours", loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody OfficeSettingsResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestString(t, "08:00", resBody.WorkStartTime)
+	CheckTestString(t, "17:00", resBody.WorkEndTime)
+}
+
+func TestSettingsOfficeHoursForbiddenForNonAdmin(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	req := NewHTTPRequest("GET", "/setting/office-hours", loginResponse.UserID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+
+	payload := `{"workStartTime": "08:00", "workEndTime": "17:00"}`
+	req = NewHTTPRequest("PUT", "/setting/office-hours", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestSettingsOfficeHoursRejectsInvalidTimes(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	payload := `{"workStartTime": "17:00", "workEndTime": "08:00"}`
+	req := NewHTTPRequest("PUT", "/setting/office-hours", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
 }
 
 func TestSettingsCRUDMany(t *testing.T) {

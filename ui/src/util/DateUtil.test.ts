@@ -24,6 +24,20 @@ describe("DateUtil", () => {
     });
   });
 
+  describe("setSecondsToMin", () => {
+    it("should zero seconds and milliseconds without mutating source date", () => {
+      const date = new Date("2030-09-01T17:00:37.500");
+      const normalized = DateUtil.setSecondsToMin(date);
+
+      expect(date.getSeconds()).toBe(37);
+      expect(date.getMilliseconds()).toBe(500);
+      expect(normalized.getSeconds()).toBe(0);
+      expect(normalized.getMilliseconds()).toBe(0);
+      expect(normalized.getHours()).toBe(17);
+      expect(normalized.getMinutes()).toBe(0);
+    });
+  });
+
   describe("isSameDate", () => {
     it("should return true if date1=date2", () => {
       const date = new Date();

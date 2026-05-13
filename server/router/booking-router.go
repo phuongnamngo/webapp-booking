@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -559,12 +560,49 @@ func (router *BookingRouter) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestUser := GetRequestUser(r)
+	locationTz, err := time.LoadLocation(GetLocationRepository().GetTimezone(location))
+	if err != nil {
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	nowAtLocation := time.Now().In(locationTz)
+	enterAtLocation, err := GetLocationRepository().AttachTimezoneInformation(e.Booking.Enter, location)
+	if err != nil {
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	leaveAtLocation, err := GetLocationRepository().AttachTimezoneInformation(e.Booking.Leave, location)
+	if err != nil {
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	startOfTodayAtLocation := time.Date(nowAtLocation.Year(), nowAtLocation.Month(), nowAtLocation.Day(), 0, 0, 0, 0, nowAtLocation.Location())
 
-	// leave must not be in past
-	now := time.Now().UTC()
-	now = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	if e.Booking.Leave.Before(now) {
+	// Bookings that ended before today in the location timezone stay non-deletable.
+	if leaveAtLocation.Before(startOfTodayAtLocation) {
 		SendBadRequest(w)
+		return
+	}
+
+	bookingStarted := !enterAtLocation.After(nowAtLocation)
+
+	// Regular users can no longer cancel once the booking has started.
+	if bookingStarted && !CanSpaceAdminOrg(requestUser, location.OrganizationID) {
+		SendBadRequestCode(w, ResponseCodeBookingAlreadyStarted)
+		return
+	}
+
+	// Started bookings may still be cancelled by admins even if the future cutoff is enabled.
+	if bookingStarted {
+		go router.onBookingDeleted(&e.Booking, true)
+		if err := GetBookingRepository().Delete(e); err != nil {
+			SendInternalServerError(w)
+			return
+		}
+		SendUpdated(w)
 		return
 	}
 
@@ -843,6 +881,9 @@ func (router *BookingRouter) getPresenceReport(w http.ResponseWriter, r *http.Re
 }
 
 func (router *BookingRouter) IsValidBookingDuration(m *BookingRequest, orgID string, user *User) bool {
+	if !m.Leave.After(m.Enter) {
+		return false
+	}
 	noAdminRestrictions, _ := GetSettingsRepository().GetBool(orgID, SettingNoAdminRestrictions.Name)
 	if noAdminRestrictions && CanSpaceAdminOrg(user, orgID) {
 		return true
@@ -885,13 +926,17 @@ func (router *BookingRouter) IsValidBookingAdvance(m *BookingRequest, orgID stri
 	noAdminRestrictions, _ := GetSettingsRepository().GetBool(orgID, SettingNoAdminRestrictions.Name)
 	maxAdvanceDays, _ := GetSettingsRepository().GetInt(orgID, SettingMaxDaysInAdvance.Name)
 	dailyBasisBooking, _ := GetSettingsRepository().GetBool(orgID, SettingDailyBasisBooking.Name)
-	// allow Enter-Date in past if at least this morning
 	now := time.Now().UTC()
 	now = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	if dailyBasisBooking {
 		now = now.Add(-12 * time.Hour)
+	} else {
+		now = time.Now().UTC()
 	}
-	if m.Leave.Before(now) { // Leave must not be in past
+	if !m.Leave.After(now) { // Leave must not be in past
+		return false, ResponseCodeBookingInPast
+	}
+	if !dailyBasisBooking && m.Enter.Before(now) {
 		return false, ResponseCodeBookingInPast
 	}
 	advanceDays := math.Floor(m.Enter.Sub(now).Hours() / 24)
@@ -947,6 +992,13 @@ func (router *BookingRouter) isValidBookingRequest(m *CreateBookingRequest, loca
 	if !router.isValidMinHoursBooking(&m.BookingRequest, orgID, user) {
 		return false, ResponseCodeBookingInvalidMinBookingDuration
 	}
+	officeStart, officeEnd, valid, code := router.getBookingOfficeHours(&m.BookingRequest)
+	if !valid {
+		return false, code
+	}
+	if valid, code := router.isValidSpaceTypeBooking(m, user, orgID, officeStart, officeEnd); !valid {
+		return false, code
+	}
 	if !isUpdate {
 		if !router.IsValidMaxUpcomingBookings(orgID, user, upcomingBookingsMarkup) {
 			return false, ResponseCodeBookingTooManyUpcomingBookings
@@ -989,6 +1041,149 @@ func (router *BookingRouter) isValidBookingRequest(m *CreateBookingRequest, loca
 		}
 	}
 	return true, 0
+}
+
+func (router *BookingRouter) getBookingOfficeHours(m *BookingRequest) (time.Time, time.Time, bool, int) {
+	officeSettings, err := GetOfficeSettingsRepository().Get()
+	if err != nil {
+		if !errors.Is(err, ErrOfficeSettingsMissing) {
+			log.Println(err)
+		}
+		return time.Time{}, time.Time{}, false, ResponseCodeOfficeSettingsMissing
+	}
+	officeStart, err := ParseOfficeClockOnDate(officeSettings.WorkStartTime, m.Enter)
+	if err != nil {
+		log.Println(err)
+		return time.Time{}, time.Time{}, false, ResponseCodeBookingOutsideOfficeHours
+	}
+	officeEnd, err := ParseOfficeClockOnDate(officeSettings.WorkEndTime, m.Enter)
+	if err != nil {
+		log.Println(err)
+		return time.Time{}, time.Time{}, false, ResponseCodeBookingOutsideOfficeHours
+	}
+	if m.Enter.Before(officeStart) || m.Leave.After(officeEnd) {
+		return time.Time{}, time.Time{}, false, ResponseCodeBookingOutsideOfficeHours
+	}
+	return officeStart, officeEnd, true, 0
+}
+
+func (router *BookingRouter) isValidSpaceTypeBooking(m *CreateBookingRequest, user *User, organizationID string, officeStart, officeEnd time.Time) (bool, int) {
+	if m.SpaceID == "" {
+		return true, 0
+	}
+	space, err := GetSpaceRepository().GetOne(m.SpaceID)
+	if err != nil {
+		log.Println(err)
+		return false, ResponseCodeBookingInvalidSeatTypeRule
+	}
+	if space.SpaceTypeID == "" {
+		// Legacy spaces without a seat type keep using direct time-range booking,
+		// but still require the effective org fallback minimum duration.
+		if router.isValidLegacyBookingDuration(&m.BookingRequest, organizationID, user) {
+			return true, 0
+		}
+		return false, ResponseCodeBookingInvalidMinBookingDuration
+	}
+	spaceType, err := GetSpaceTypeRepository().GetOne(space.SpaceTypeID)
+	if err != nil || spaceType == nil || !spaceType.Enabled || spaceType.OrganizationID != organizationID {
+		if router.isValidLegacyBookingDuration(&m.BookingRequest, organizationID, user) {
+			return true, 0
+		}
+		return false, ResponseCodeBookingInvalidMinBookingDuration
+	}
+	if spaceType.BookingMode == SpaceTypeBookingModeFlexibleTime {
+		return router.isValidFlexibleSpaceTypeDuration(&m.BookingRequest, spaceType, organizationID), ResponseCodeBookingInvalidSeatTypeRule
+	}
+	if spaceType.BookingMode == SpaceTypeBookingModeFixedSlots {
+		return router.isValidFixedSlotSpaceTypeBooking(&m.BookingRequest, spaceType, officeStart, officeEnd), ResponseCodeBookingInvalidSeatTypeRule
+	}
+	return true, 0
+}
+
+func (router *BookingRouter) isValidLegacyBookingDuration(m *BookingRequest, organizationID string, user *User) bool {
+	noAdminRestrictions, _ := GetSettingsRepository().GetBool(organizationID, SettingNoAdminRestrictions.Name)
+	if noAdminRestrictions && CanSpaceAdminOrg(user, organizationID) {
+		return true
+	}
+	minBookingDurationHours, err := GetSettingsRepository().GetInt(organizationID, SettingMinBookingDurationHours.Name)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	effectiveMinimumDuration := getEffectiveLegacyMinimumBookableDuration(minBookingDurationHours)
+	leaveTime := m.Leave
+	dailyBasisBooking, err := GetSettingsRepository().GetBool(organizationID, SettingDailyBasisBooking.Name)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	if !dailyBasisBooking {
+		leaveTime = leaveTime.Add(time.Second)
+	}
+	return leaveTime.Sub(m.Enter) >= effectiveMinimumDuration
+}
+
+func (router *BookingRouter) isValidFlexibleSpaceTypeDuration(m *BookingRequest, spaceType *SpaceType, organizationID string) bool {
+	if spaceType.MinDurationMinutes <= 0 {
+		return true
+	}
+	leave := m.Leave
+	dailyBasisBooking, err := GetSettingsRepository().GetBool(organizationID, SettingDailyBasisBooking.Name)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	if !dailyBasisBooking {
+		leave = leave.Add(time.Second)
+	}
+	durationMinutes := int(math.Floor(leave.Sub(m.Enter).Minutes()))
+	return durationMinutes >= spaceType.MinDurationMinutes
+}
+
+func (router *BookingRouter) isValidFixedSlotSpaceTypeBooking(m *BookingRequest, spaceType *SpaceType, officeStart, officeEnd time.Time) bool {
+	slots, err := GetSpaceTypeRepository().GetSlots(spaceType.ID, true)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	for _, slot := range slots {
+		startHour, startMinute, ok := parseSpaceTypeSlotClock(slot.StartTime)
+		if !ok {
+			continue
+		}
+		endHour, endMinute, ok := parseSpaceTypeSlotClock(slot.EndTime)
+		if !ok {
+			continue
+		}
+		expectedEnter := time.Date(m.Enter.Year(), m.Enter.Month(), m.Enter.Day(), startHour, startMinute, 0, 0, m.Enter.Location())
+		expectedLeave := time.Date(m.Enter.Year(), m.Enter.Month(), m.Enter.Day(), endHour, endMinute, 0, 0, m.Enter.Location())
+		if expectedEnter.Before(officeStart) || expectedLeave.After(officeEnd) {
+			continue
+		}
+		if m.Enter.Equal(expectedEnter) && (m.Leave.Equal(expectedLeave) || m.Leave.Add(time.Second).Equal(expectedLeave)) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseSpaceTypeSlotClock(value string) (int, int, bool) {
+	if !IsValidSpaceTypeSlotTime(value) {
+		return 0, 0, false
+	}
+	parts := strings.Split(value, ":")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	hour, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minute, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, false
+	}
+	return hour, minute, true
 }
 
 func (router *BookingRouter) isValidConcurrent(m *CreateBookingRequest, location *Location, bookingID string) bool {

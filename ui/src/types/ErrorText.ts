@@ -11,6 +11,10 @@ export const enum ResponseCode {
   BookingInvalidMinBookingDuration = 1007,
   BookingMaxHoursBeforeDelete = 1008,
   BookingInPast = 1011,
+  BookingInvalidSeatTypeRule = 1012,
+  OfficeSettingsMissing = 1013,
+  BookingOutsideOfficeHours = 1014,
+  BookingAlreadyStarted = 1015,
 
   PresenceReportDateRangeTooLong = 2001,
 
@@ -45,7 +49,14 @@ export default class ErrorText {
         t("errorDeleteBookingBeforeMaxCancel", {
           num: INFOS.maxHoursBeforeDelete,
         }),
+      [ResponseCode.BookingAlreadyStarted]: () => t("errorDeleteStartedBooking"),
       [ResponseCode.BookingInPast]: () => t("errorInPast"),
+      [ResponseCode.BookingInvalidSeatTypeRule]: () =>
+        t("errorInvalidSeatTypeRule"),
+      [ResponseCode.OfficeSettingsMissing]: () =>
+        t("errorOfficeSettingsMissing"),
+      [ResponseCode.BookingOutsideOfficeHours]: () =>
+        t("errorBookingOutsideOfficeHours"),
       [ResponseCode.PresenceReportDateRangeTooLong]: () =>
         t("errorDateRangeTooLong"),
       [ResponseCode.UsernameExists]: () => t("errorUsernameExists"),

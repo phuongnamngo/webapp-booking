@@ -236,6 +236,7 @@ class Approvals extends React.Component<Props, State> {
               onChange={(e: any) =>
                 this.toggleApprovalNotifications(e.target.checked)
               }
+              className="admin-approval-notifications-switch"
             />
           </div>
           <p>{this.props.t("noRecords")}</p>

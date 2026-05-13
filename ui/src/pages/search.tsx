@@ -54,6 +54,7 @@ import Buddy from "@/types/Buddy";
 import SpaceAttribute from "@/types/SpaceAttribute";
 import Location from "@/types/Location";
 import Space from "@/types/Space";
+import type { SpaceDayStatus, SpaceDayStatusBooking } from "@/types/Space";
 import Ajax from "@/util/Ajax";
 import Booking from "@/types/Booking";
 import Formatting from "@/util/Formatting";
@@ -63,10 +64,25 @@ import RecurringBooking, {
 import AjaxError from "@/util/AjaxError";
 import UserPreference from "@/types/UserPreference";
 import User from "@/types/User";
+import type { SpaceTypeSlot } from "@/types/SpaceType";
 import DateTimePicker from "@/components/DateTimePicker";
 import IconTextButton from "@/components/IconTextButton";
 import DateUtil from "@/util/DateUtil";
 import BrowserUtil from "@/util/BrowserUtil";
+import {
+  doesBookingRangeOverlapDayStatus,
+  getEffectiveDayStatusStatus,
+  getEffectiveMinimumBookingDurationMinutes,
+  getAvailableFixedSlots,
+  getDurationMinutes,
+  getOfficeHoursRange,
+  isBookingRangeInBookableFuture,
+  isFixedSlotSpace,
+  isBookingRangeWithinOfficeHours,
+  parseDayStatusDate,
+  slotToDateRange,
+  usesLegacyTimeRangeFallback,
+} from "@/util/SpaceTypeBooking";
 
 interface State {
   earliestEnterDate: Date;
@@ -77,6 +93,11 @@ interface State {
   canSearchHint: string;
   showBookingNames: boolean;
   selectedSpace: Space | null;
+  modalEnter: Date | null;
+  modalLeave: Date | null;
+  modalSelectedSlotId: string;
+  modalAvailabilityLoading: boolean;
+  modalSpaceAvailable: boolean;
   showConfirm: boolean;
   showLocationDetails: boolean;
   showSearchModal: boolean;
@@ -96,6 +117,7 @@ interface State {
   prefPartiallyBookedColor: string;
   prefBuddyBookedColor: string;
   prefDisallowedColor: string;
+  dayStatusBySpaceId: Record<string, SpaceDayStatus>;
   attributeValues: SpaceAttributeValue[];
   searchAttributesLocation: SearchAttribute[];
   searchAttributesSpace: SearchAttribute[];
@@ -128,7 +150,7 @@ interface Props {
   t: TranslationFunc;
 }
 
-class Search extends React.Component<Props, State> {
+export class Search extends React.Component<Props, State> {
   static PreferenceEnterTimeNow: number = 1;
   static PreferenceEnterTimeNextDay: number = 2;
   static PreferenceEnterTimeNextWorkday: number = 3;
@@ -141,6 +163,8 @@ class Search extends React.Component<Props, State> {
   buddies: Buddy[];
   availableAttributes: SpaceAttribute[];
   recurrenceMaxEndDate: Date;
+  dayStatusRequestSeq: number = 0;
+  modalAvailabilityRequestSeq: number = 0;
 
   resetEnterTime: Date | undefined;
   resetLeaveTime: Date | undefined;
@@ -167,6 +191,11 @@ class Search extends React.Component<Props, State> {
       canSearchHint: "",
       showBookingNames: false,
       selectedSpace: null,
+      modalEnter: null,
+      modalLeave: null,
+      modalSelectedSlotId: "",
+      modalAvailabilityLoading: false,
+      modalSpaceAvailable: true,
       showConfirm: false,
       confirmingBooking: false,
       showLocationDetails: false,
@@ -191,6 +220,7 @@ class Search extends React.Component<Props, State> {
       prefPartiallyBookedColor: "#ff9100",
       prefBuddyBookedColor: "#2415c5",
       prefDisallowedColor: "#eeeeee",
+      dayStatusBySpaceId: {},
       attributeValues: [],
       searchAttributesLocation: [],
       searchAttributesSpace: [],
@@ -237,35 +267,36 @@ class Search extends React.Component<Props, State> {
       this.loadAvailableAttributes(),
     ];
     Promise.all(promises).then(() => {
-      this.initDates();
-      if (this.state.locationId === "" && this.locations.length > 0) {
-        const defaultLocationId = this.getPreferredLocationId(
-          (this.props.router.query["lid"] as string) || "",
-        );
-        const sidParam = (this.props.router.query["sid"] as string) || "";
-        this.setState({ locationId: defaultLocationId }, () => {
-          if (!defaultLocationId) {
-            this.setState({ loading: false });
-            return;
-          }
-          this.getLocation()
-            ?.getAttributes()
-            .then((attributes) => {
-              this.loadMap(this.state.locationId).then(() => {
-                this.setState({
-                  attributeValues: attributes,
-                  loading: false,
+      this.initDates(() => {
+        if (this.state.locationId === "" && this.locations.length > 0) {
+          const defaultLocationId = this.getPreferredLocationId(
+            (this.props.router.query["lid"] as string) || "",
+          );
+          const sidParam = (this.props.router.query["sid"] as string) || "";
+          this.setState({ locationId: defaultLocationId }, () => {
+            if (!defaultLocationId) {
+              this.setState({ loading: false });
+              return;
+            }
+            this.getLocation()
+              ?.getAttributes()
+              .then((attributes) => {
+                this.loadMap(this.state.locationId).then(() => {
+                  this.setState({
+                    attributeValues: attributes,
+                    loading: false,
+                  });
+                  if (sidParam) {
+                    const space = this.data.find((item) => item.id == sidParam);
+                    if (space) this.onSpaceSelect(space);
+                  }
                 });
-                if (sidParam) {
-                  const space = this.data.find((item) => item.id == sidParam);
-                  if (space) this.onSpaceSelect(space);
-                }
               });
-            });
-        });
-      } else {
-        this.setState({ loading: false });
-      }
+          });
+        } else {
+          this.setState({ loading: false });
+        }
+      });
     });
   };
 
@@ -354,7 +385,7 @@ class Search extends React.Component<Props, State> {
     return "";
   };
 
-  initDates = () => {
+  initDates = (callback?: () => void) => {
     let enter = new Date();
     if (this.state.prefEnterTime === Search.PreferenceEnterTimeNow) {
       enter.setHours(enter.getHours() + 1, 0, 0);
@@ -396,13 +427,16 @@ class Search extends React.Component<Props, State> {
     if (RuntimeConfig.INFOS.dailyBasisBooking) {
       enter = DateUtil.setHoursToMin(enter);
       leave = DateUtil.setHoursToMax(leave);
+    } else {
+      enter = DateUtil.setSecondsToMin(enter);
+      leave = DateUtil.setSecondsToMin(leave);
     }
 
     this.setState({
       earliestEnterDate: enter,
       enter,
       leave,
-    });
+    }, callback);
   };
 
   loadLocations = async (): Promise<void> => {
@@ -465,9 +499,18 @@ class Search extends React.Component<Props, State> {
   loadMap = async (locationId: string) => {
     this.setState({ loading: true });
     return Location.get(locationId).then((location) => {
-      return this.loadSpaces(location.id).then(() => {
+      if (this.state.locationId !== location.id) {
+        return false;
+      }
+      return this.loadSpaces(location.id).then((loaded) => {
+        if (!loaded) {
+          return false;
+        }
         return Ajax.get(location.getMapUrl()).then((mapData) => {
-          this.mapData = mapData.json;
+          if (this.state.locationId === location.id) {
+            this.mapData = mapData.json;
+          }
+          return true;
         });
       });
     });
@@ -475,6 +518,12 @@ class Search extends React.Component<Props, State> {
 
   loadSpaces = async (locationId: string) => {
     this.setState({ loading: true });
+    if (this.state.locationId !== locationId) {
+      return false;
+    }
+    const statusDate = new Date(this.state.enter);
+    const statusDateKey = this.getDayStatusDateKey(statusDate);
+    const requestSeq = ++this.dayStatusRequestSeq;
     let leave = new Date(this.state.leave);
     if (!RuntimeConfig.INFOS.dailyBasisBooking) {
       leave.setSeconds(leave.getSeconds() - 1);
@@ -485,7 +534,68 @@ class Search extends React.Component<Props, State> {
       leave,
       this.state.searchAttributesSpace,
     ).then((list) => {
-      this.data = list;
+      if (
+        requestSeq !== this.dayStatusRequestSeq ||
+        this.state.locationId !== locationId ||
+        this.getDayStatusDateKey(this.state.enter) !== statusDateKey
+      ) {
+        return false;
+      }
+      return this.loadDayStatusBySpaceId(locationId, statusDate).then(
+        (dayStatusBySpaceId) => {
+          if (
+            requestSeq === this.dayStatusRequestSeq &&
+            this.state.locationId === locationId &&
+            this.getDayStatusDateKey(this.state.enter) === statusDateKey
+          ) {
+            this.data = list;
+            this.setState({ dayStatusBySpaceId });
+            return true;
+          }
+          return false;
+        },
+      );
+    });
+  };
+
+  getDayStatusDateKey = (date: Date) =>
+    DateUtil.formatToDateTimeString(date).split("T")[0];
+
+  loadDayStatusBySpaceId = async (
+    locationId: string,
+    date: Date,
+  ): Promise<Record<string, SpaceDayStatus>> => {
+    return Space.listDayStatus(locationId, date)
+      .then((statuses) => {
+        const dayStatusBySpaceId: Record<string, SpaceDayStatus> = {};
+        statuses.forEach((status) => {
+          dayStatusBySpaceId[status.spaceId] = status;
+        });
+        return dayStatusBySpaceId;
+      })
+      .catch(() => ({}));
+  };
+
+  refreshDayStatusOnly = (locationId: string, date: Date): Promise<void> => {
+    if (!locationId) {
+      return new Promise<void>((resolve) => {
+        this.setState({ dayStatusBySpaceId: {}, loading: false }, () => resolve());
+      });
+    }
+    const statusDateKey = this.getDayStatusDateKey(date);
+    const requestSeq = ++this.dayStatusRequestSeq;
+    return this.loadDayStatusBySpaceId(locationId, date).then((dayStatusBySpaceId) => {
+      return new Promise<void>((resolve) => {
+        if (
+          requestSeq === this.dayStatusRequestSeq &&
+          this.state.locationId === locationId &&
+          this.getDayStatusDateKey(this.state.enter) === statusDateKey
+        ) {
+          this.setState({ dayStatusBySpaceId, loading: false }, () => resolve());
+          return;
+        }
+        resolve();
+      });
     });
   };
 
@@ -508,11 +618,15 @@ class Search extends React.Component<Props, State> {
       hint = this.props.t("errorPickArea");
     }
     const today = DateUtil.getTodayStart();
+    const now = new Date();
     let enterTime = new Date(this.state.enter);
     if (RuntimeConfig.INFOS.dailyBasisBooking) {
       enterTime = DateUtil.setHoursToMax(enterTime);
-    }
-    if (enterTime.getTime() <= today.getTime()) {
+      if (enterTime.getTime() <= today.getTime()) {
+        res = false;
+        hint = this.props.t("errorEnterFuture");
+      }
+    } else if (enterTime.getTime() < now.getTime()) {
       res = false;
       hint = this.props.t("errorEnterFuture");
     }
@@ -604,7 +718,7 @@ class Search extends React.Component<Props, State> {
     const dateChangedCb = () => {
       this.updateCanSearch().then(() => {
         if (!this.state.canSearch) {
-          this.setState({ loading: false });
+          this.refreshDayStatusOnly(this.state.locationId, this.state.enter);
         } else {
           const promises = [
             this.initCurrentBookingCount(),
@@ -643,6 +757,9 @@ class Search extends React.Component<Props, State> {
     if (RuntimeConfig.INFOS.dailyBasisBooking) {
       if (newEnter) newEnter = DateUtil.setHoursToMin(newEnter);
       if (newLeave) newLeave = DateUtil.setHoursToMax(newLeave);
+    } else {
+      if (newEnter) newEnter = DateUtil.setSecondsToMin(newEnter);
+      if (newLeave) newLeave = DateUtil.setSecondsToMin(newLeave);
     }
 
     const stateEnter = newEnter ?? this.state.enter;
@@ -676,31 +793,297 @@ class Search extends React.Component<Props, State> {
     );
   };
 
+  getModalBookingRange = (): [Date, Date] => {
+    return [
+      this.state.modalEnter || this.state.enter,
+      this.state.modalLeave || this.state.leave,
+    ];
+  };
+
+  getSelectedSpaceDayStatus = (): SpaceDayStatus | undefined => {
+    const selectedSpace = this.state.selectedSpace;
+    if (!selectedSpace) {
+      return undefined;
+    }
+    return this.state.dayStatusBySpaceId[selectedSpace.id];
+  };
+
+  getSpaceDayStatus = (space: Space): SpaceDayStatus | undefined => {
+    return this.state.dayStatusBySpaceId[space.id];
+  };
+
+  getAvailableFixedSlotsForSpace = (space: Space): SpaceTypeSlot[] => {
+    return getAvailableFixedSlots(
+      space.spaceType,
+      this.state.enter,
+      this.getSpaceDayStatus(space),
+    );
+  };
+
+  isModalRangeAllowedByDayStatus = (
+    enter: Date,
+    leave: Date,
+    dayStatus: SpaceDayStatus | undefined = this.getSelectedSpaceDayStatus(),
+  ): boolean => {
+    return (
+      isBookingRangeInBookableFuture(enter, dayStatus) &&
+      isBookingRangeWithinOfficeHours(enter, leave, dayStatus) &&
+      !doesBookingRangeOverlapDayStatus(enter, leave, dayStatus)
+    );
+  };
+
+  initializeModalBookingRange = (
+    item: Space,
+  ): {
+    modalEnter: Date;
+    modalLeave: Date;
+    modalSelectedSlotId: string;
+    modalAvailabilityLoading: boolean;
+    modalSpaceAvailable: boolean;
+  } => {
+    const spaceType = item.spaceType;
+    let modalEnter = new Date(this.state.enter);
+    let modalLeave = new Date(this.state.leave);
+    let modalSelectedSlotId = "";
+
+    if (isFixedSlotSpace(spaceType)) {
+      const slots = this.getAvailableFixedSlotsForSpace(item);
+      if (slots.length > 0) {
+        const slot = slots[0];
+        [modalEnter, modalLeave] = slotToDateRange(slot, this.state.enter);
+        modalSelectedSlotId = slot.id;
+      }
+    }
+
+    return {
+      modalEnter,
+      modalLeave,
+      modalSelectedSlotId,
+      modalAvailabilityLoading: false,
+      modalSpaceAvailable: item.available,
+    };
+  };
+
+  updateModalBookingRange = (
+    enter: Date,
+    leave: Date,
+    modalSelectedSlotId?: string,
+  ): void => {
+    this.setState(
+      {
+        modalEnter: enter,
+        modalLeave: leave,
+        modalSelectedSlotId:
+          modalSelectedSlotId === undefined
+            ? this.state.modalSelectedSlotId
+            : modalSelectedSlotId,
+        modalAvailabilityLoading: true,
+        modalSpaceAvailable: false,
+      },
+      () => {
+        this.checkModalAvailability(enter, leave);
+        this.onRecurrenceOptionsChanged();
+      },
+    );
+  };
+
+  checkModalAvailability = (enter: Date, leave: Date): void => {
+    const selectedSpace = this.state.selectedSpace;
+    if (!selectedSpace) {
+      return;
+    }
+    const requestSeq = ++this.modalAvailabilityRequestSeq;
+    const isCurrentRequest = () =>
+      requestSeq === this.modalAvailabilityRequestSeq &&
+      this.state.selectedSpace?.id === selectedSpace.id &&
+      this.state.modalEnter?.getTime() === enter.getTime() &&
+      this.state.modalLeave?.getTime() === leave.getTime();
+    const markUnavailable = () => {
+      if (isCurrentRequest()) {
+        this.setState({
+          modalAvailabilityLoading: false,
+          modalSpaceAvailable: false,
+        });
+      }
+    };
+    const runAvailabilityCheck = (dayStatus?: SpaceDayStatus) => {
+      if (!this.isModalRangeAllowedByDayStatus(enter, leave, dayStatus)) {
+        markUnavailable();
+        return;
+      }
+      if (isCurrentRequest()) {
+        this.setState({ modalAvailabilityLoading: true });
+      }
+      let availabilityLeave = new Date(leave);
+      if (!RuntimeConfig.INFOS.dailyBasisBooking) {
+        availabilityLeave.setSeconds(availabilityLeave.getSeconds() - 1);
+      }
+      Space.listAvailability(
+        this.state.locationId,
+        enter,
+        availabilityLeave,
+        this.state.searchAttributesSpace,
+      )
+        .then((spaces) => {
+          if (!isCurrentRequest()) {
+            return;
+          }
+          const space = spaces.find((item) => item.id === selectedSpace.id);
+          this.setState({
+            modalAvailabilityLoading: false,
+            modalSpaceAvailable: !!space?.available,
+          });
+        })
+        .catch(() => {
+          markUnavailable();
+        });
+    };
+    this.setState({ modalAvailabilityLoading: true });
+    Space.listDayStatus(selectedSpace.locationId, enter)
+      .then((statuses) => {
+        if (!isCurrentRequest()) {
+          return;
+        }
+        const refreshedDayStatusBySpaceId: Record<string, SpaceDayStatus> = {};
+        statuses.forEach((status) => {
+          refreshedDayStatusBySpaceId[status.spaceId] = status;
+        });
+        this.setState(
+          { dayStatusBySpaceId: refreshedDayStatusBySpaceId },
+          () => runAvailabilityCheck(refreshedDayStatusBySpaceId[selectedSpace.id]),
+        );
+      })
+      .catch(() => {
+        runAvailabilityCheck();
+      });
+  };
+
+  getModalBookingError = (): string => {
+    const selectedSpace = this.state.selectedSpace;
+    const [enter, leave] = this.getModalBookingRange();
+    if (leave.getTime() <= enter.getTime()) {
+      return this.props.t("errorLeaveAfterEnter");
+    }
+    if (!selectedSpace) {
+      return "";
+    }
+    const spaceType = selectedSpace.spaceType;
+    const dayStatus = this.getSelectedSpaceDayStatus();
+    const effectiveDayStatus =
+      this.getEffectiveSpaceDayStatus(selectedSpace, dayStatus) ||
+      dayStatus?.status;
+    if (effectiveDayStatus === "full") {
+      return this.props.t("noAvailableTimeSlots");
+    }
+    if (!isBookingRangeInBookableFuture(enter, dayStatus)) {
+      return this.props.t("errorEnterFuture");
+    }
+    if (!isBookingRangeWithinOfficeHours(enter, leave, dayStatus)) {
+      return this.props.t("errorOutsideOfficeHours", {
+        start: dayStatus ? this.formatDayStatusClock(dayStatus.officeStart) : "",
+        end: dayStatus ? this.formatDayStatusClock(dayStatus.officeEnd) : "",
+      });
+    }
+    if (doesBookingRangeOverlapDayStatus(enter, leave, dayStatus)) {
+      return this.props.t("errorSpaceUnavailableForSelectedTime");
+    }
+    if (isFixedSlotSpace(spaceType)) {
+      const availableFixedSlots =
+        this.getAvailableFixedSlotsForSpace(selectedSpace);
+      if (
+        availableFixedSlots.length === 0 ||
+        !availableFixedSlots.some(
+          (slot) => slot.id === this.state.modalSelectedSlotId,
+        )
+      ) {
+        return this.props.t("noAvailableTimeSlots");
+      }
+    }
+    const effectiveMinDurationMinutes =
+      getEffectiveMinimumBookingDurationMinutes(
+        spaceType,
+        RuntimeConfig.INFOS.minBookingDurationHours * 60,
+      );
+    if (
+      effectiveMinDurationMinutes > 0 &&
+      getDurationMinutes(enter, leave) < effectiveMinDurationMinutes
+    ) {
+      return this.props.t("errorMinBookingDurationMinutes", {
+        num: effectiveMinDurationMinutes,
+      });
+    }
+    if (!this.state.modalSpaceAvailable) {
+      return this.props.t("errorSpaceUnavailableForSelectedTime");
+    }
+    return "";
+  };
+
   onSpaceSelect = (item: Space) => {
     if (!item.allowed || !item.enabled) {
       return;
     }
-    if (item.available) {
+    const modalBookingState = this.initializeModalBookingRange(item);
+    const bookings = Booking.createFromRawArray(item.rawBookings);
+    const dayStatus = this.getSpaceDayStatus(item);
+    if (item.available || bookings.length > 0 || dayStatus) {
       this.setState(
         {
           showConfirm: true,
+          showBookingNames: false,
           selectedSpace: item,
           cancelSeries: false,
+          ...modalBookingState,
         },
-        () => this.resetRecurrence(),
+        () => {
+          this.resetRecurrence();
+          if (
+            !isFixedSlotSpace(item.spaceType) ||
+            !!modalBookingState.modalSelectedSlotId
+          ) {
+            this.checkModalAvailability(
+              modalBookingState.modalEnter,
+              modalBookingState.modalLeave,
+            );
+          }
+        },
       );
-    } else {
-      let bookings = Booking.createFromRawArray(item.rawBookings);
-      if (!item.available && bookings && bookings.length > 0) {
-        this.setState({
-          showBookingNames: true,
-          selectedSpace: item,
-        });
-      }
     }
   };
 
+  getDayStatusColor = (status: SpaceDayStatus["status"]) => {
+    if (status === "available") {
+      return this.state.prefNotBookedColor;
+    }
+    if (status === "partially_booked") {
+      return this.state.prefPartiallyBookedColor || "#ff9100";
+    }
+    return this.state.prefBookedColor;
+  };
+
+  getEffectiveSpaceDayStatus = (
+    item: Space,
+    dayStatus?: SpaceDayStatus,
+  ): SpaceDayStatus["status"] | undefined => {
+    return getEffectiveDayStatusStatus(
+      item.spaceType,
+      this.state.enter,
+      dayStatus,
+      RuntimeConfig.INFOS.minBookingDurationHours * 60,
+    );
+  };
+
   getAvailabilityStyle = (item: Space, bookings: Booking[]) => {
+    if (!item.allowed || !item.enabled) {
+      return this.state.prefDisallowedColor;
+    }
+
+    const dayStatus = this.state.dayStatusBySpaceId[item.id];
+    if (dayStatus) {
+      return this.getDayStatusColor(
+        this.getEffectiveSpaceDayStatus(item, dayStatus) || dayStatus.status,
+      );
+    }
+
     const myDesk = bookings.find(
       (b) => b.user.email === RuntimeConfig.INFOS.username,
     );
@@ -717,46 +1100,39 @@ class Search extends React.Component<Props, State> {
       return this.state.prefBuddyBookedColor;
     }
 
-    if (!item.allowed || !item.enabled) {
-      return this.state.prefDisallowedColor;
-    }
-
-    if (
-      RuntimeConfig.INFOS.maxHoursPartiallyBookedEnabled &&
-      bookings.length > 0
-    ) {
-      let prefWorkdayStartDate = new Date(this.state.enter);
-      prefWorkdayStartDate.setHours(this.state.prefWorkdayStart, 0, 0);
-      prefWorkdayStartDate =
-        DateUtil.convertToFakeUTCDate(prefWorkdayStartDate);
-      let prefWorkdayEndDate = new Date(this.state.leave);
-      prefWorkdayEndDate.setHours(this.state.prefWorkdayEnd, 0, 0);
-      prefWorkdayEndDate = DateUtil.convertToFakeUTCDate(prefWorkdayEndDate);
-
-      let leastEnter = bookings.reduce((a, b) =>
-        a.enter < b.enter ? a : b,
-      ).enter;
-      if (leastEnter < prefWorkdayStartDate) {
-        leastEnter = prefWorkdayStartDate;
-      }
-
-      let maxLeave = bookings.reduce((a, b) =>
-        a.leave > b.leave ? a : b,
-      ).leave;
-      if (maxLeave > prefWorkdayEndDate) {
-        maxLeave = prefWorkdayEndDate;
-      }
-      const hours =
-        (maxLeave.getTime() - leastEnter.getTime()) / 1000 / 60 / 60;
-
-      if (hours < RuntimeConfig.INFOS.maxHoursPartiallyBooked) {
-        return this.state.prefPartiallyBookedColor;
-      }
-    }
-
     return item.available
       ? this.state.prefNotBookedColor
       : this.state.prefBookedColor;
+  };
+
+  renderDayStatusLegend = () => {
+    const entries = [
+      {
+        label: this.props.t("dayStatusAvailable"),
+        color: this.getDayStatusColor("available"),
+      },
+      {
+        label: this.props.t("dayStatusPartiallyBooked"),
+        color: this.getDayStatusColor("partially_booked"),
+      },
+      {
+        label: this.props.t("dayStatusFull"),
+        color: this.getDayStatusColor("full"),
+      },
+    ];
+    return (
+      <div className="search-map-floating-ui search-map-floating-ui--legend">
+        {entries.map((entry) => (
+          <div key={entry.label} className="search-map-legend-item">
+            <span
+              className="search-map-legend-swatch"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span>{entry.label}</span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   getBookersList = (bookings: Booking[]) => {
@@ -814,8 +1190,13 @@ class Search extends React.Component<Props, State> {
   renderListItem = (item: Space) => {
     const bookings = Booking.createFromRawArray(item.rawBookings);
     const bgColor = this.getAvailabilityStyle(item, bookings);
+    const dayStatus = this.state.dayStatusBySpaceId[item.id];
+    const effectiveDayStatus =
+      this.getEffectiveSpaceDayStatus(item, dayStatus) || dayStatus?.status;
     let bookerCount = 0;
-    if (bgColor === this.state.prefSelfBookedColor) {
+    if (dayStatus) {
+      bookerCount = dayStatus.bookings.length;
+    } else if (bgColor === this.state.prefSelfBookedColor) {
       bookerCount = 1;
     } else if (
       bgColor === this.state.prefBookedColor ||
@@ -909,6 +1290,267 @@ class Search extends React.Component<Props, State> {
     );
   };
 
+  formatDayStatusTime = (date: Date): string => {
+    return new Intl.DateTimeFormat(Formatting.Language, {
+      hour: "numeric",
+      minute: "numeric",
+      hour12: !RuntimeConfig.INFOS.use24HourTime,
+    }).format(date);
+  };
+
+  formatDayStatusClock = (value: string): string => {
+    const parsed = parseDayStatusDate(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return this.formatDayStatusTime(parsed);
+    }
+    return value;
+  };
+
+  getTimelineBookingStyle = (
+    booking: SpaceDayStatusBooking,
+    dayStatus: SpaceDayStatus,
+  ): React.CSSProperties => {
+    const officeHours = getOfficeHoursRange(this.state.enter, dayStatus);
+    if (!officeHours) {
+      return {};
+    }
+    const [officeStart, officeEnd] = officeHours;
+    const officeDuration = officeEnd.getTime() - officeStart.getTime();
+    if (officeDuration <= 0) {
+      return {};
+    }
+    const bookingStart = parseDayStatusDate(booking.enter).getTime();
+    const bookingEnd = parseDayStatusDate(booking.leave).getTime();
+    const left = Math.max(
+      0,
+      Math.min(
+        100,
+        ((bookingStart - officeStart.getTime()) / officeDuration) * 100,
+      ),
+    );
+    const right = Math.max(
+      left,
+      Math.min(
+        100,
+        ((bookingEnd - officeStart.getTime()) / officeDuration) * 100,
+      ),
+    );
+    return {
+      left: `${left}%`,
+      width: `${Math.max(right - left, 1)}%`,
+    };
+  };
+
+  renderModalDayStatusTimeline = () => {
+    const dayStatus = this.getSelectedSpaceDayStatus();
+    if (!dayStatus) {
+      return <></>;
+    }
+    const bookings = dayStatus.bookings || [];
+    return (
+      <div className="booking-timeline">
+        <div className="booking-timeline-header">
+          <strong>{this.props.t("bookingTimeline")}</strong>
+          <span>
+            {this.props.t("officeHours")}:{" "}
+            {this.formatDayStatusClock(dayStatus.officeStart)} -{" "}
+            {this.formatDayStatusClock(dayStatus.officeEnd)}
+          </span>
+        </div>
+        <div className="booking-timeline-frame">
+          {bookings.map((booking) => (
+            <div
+              key={`timeline-block-${booking.id}`}
+              className="booking-timeline-block"
+              style={this.getTimelineBookingStyle(booking, dayStatus)}
+              title={this.getTimelineBookingTitle(booking)}
+            />
+          ))}
+          {bookings.length === 0 && (
+            <div className="booking-timeline-empty">
+              {this.props.t("noTimelineBookings")}
+            </div>
+          )}
+        </div>
+        <div className="booking-timeline-axis">
+          <span>{this.formatDayStatusClock(dayStatus.officeStart)}</span>
+          <span>{this.formatDayStatusClock(dayStatus.officeEnd)}</span>
+        </div>
+        {bookings.map((booking) => (
+          <div
+            key={`timeline-row-${booking.id}`}
+            className="booking-timeline-row"
+          >
+            <span className="booking-timeline-time">
+              {this.formatDayStatusTime(parseDayStatusDate(booking.enter))} -{" "}
+              {this.formatDayStatusTime(parseDayStatusDate(booking.leave))}
+            </span>
+            {booking.subject && (
+              <span className="booking-timeline-subject">
+                {this.props.t("subject")}: {booking.subject}
+              </span>
+            )}
+            {booking.userEmail && (
+              <span className="booking-timeline-user">
+                {this.props.t("user")}: {booking.userEmail}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  getTimelineBookingTitle = (booking: SpaceDayStatusBooking): string => {
+    const parts = [
+      `${this.formatDayStatusTime(
+        parseDayStatusDate(booking.enter),
+      )} - ${this.formatDayStatusTime(parseDayStatusDate(booking.leave))}`,
+    ];
+    if (booking.subject) {
+      parts.push(`${this.props.t("subject")}: ${booking.subject}`);
+    }
+    if (booking.userEmail) {
+      parts.push(`${this.props.t("user")}: ${booking.userEmail}`);
+    }
+    return parts.join("\n");
+  };
+
+  renderModalBookingTimeControls = () => {
+    const selectedSpace = this.state.selectedSpace;
+    if (!selectedSpace) {
+      return <></>;
+    }
+    const spaceType = selectedSpace.spaceType;
+    const dayStatus = this.getSelectedSpaceDayStatus();
+    const effectiveDayStatus =
+      this.getEffectiveSpaceDayStatus(selectedSpace, dayStatus) ||
+      dayStatus?.status;
+    const noBookableTimeRemaining = effectiveDayStatus === "full";
+    const [modalEnter, modalLeave] = this.getModalBookingRange();
+    const bookingError = this.getModalBookingError();
+    const availableFixedSlots =
+      this.getAvailableFixedSlotsForSpace(selectedSpace);
+
+    if (isFixedSlotSpace(spaceType)) {
+      return (
+        <>
+          <Form.Group as={Row} style={{ marginTop: "25px" }}>
+            <Form.Label column sm="4">
+              {this.props.t("timeSlot")}:
+            </Form.Label>
+            <Col sm="8">
+              <Form.Select
+                id="space-type-slot"
+                value={this.state.modalSelectedSlotId}
+                disabled={
+                  noBookableTimeRemaining || availableFixedSlots.length === 0
+                }
+                onChange={(e) => {
+                  const slot = availableFixedSlots.find(
+                    (item) => item.id === e.target.value,
+                  );
+                  if (!slot) {
+                    return;
+                  }
+                  const [enter, leave] = slotToDateRange(
+                    slot,
+                    this.state.enter,
+                  );
+                  this.updateModalBookingRange(enter, leave, slot.id);
+                }}
+              >
+                {availableFixedSlots.length === 0 ? (
+                  <option value="">
+                    {this.props.t("noAvailableTimeSlots")}
+                  </option>
+                ) : (
+                  availableFixedSlots.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {slot.label} ({slot.startTime} - {slot.endTime})
+                    </option>
+                  ))
+                )}
+              </Form.Select>
+            </Col>
+          </Form.Group>
+          {this.renderModalAvailabilityHint(bookingError)}
+        </>
+      );
+    }
+
+    if (
+      !usesLegacyTimeRangeFallback(spaceType) &&
+      spaceType?.bookingMode !== "flexible_time"
+    ) {
+      return <></>;
+    }
+
+    return (
+      <>
+        <Form.Group as={Row} style={{ marginTop: "25px" }}>
+          <Form.Label column sm="4" htmlFor="modal-enter">
+            {this.props.t("startTime")}:
+          </Form.Label>
+          <Col sm="8">
+            <DateTimePicker
+              id="modal-enter"
+              value={modalEnter}
+              disabled={noBookableTimeRemaining}
+              onChange={(value: Date | null | [Date | null, Date | null]) => {
+                if (value != null && value instanceof Date) {
+                  this.updateModalBookingRange(value, modalLeave);
+                }
+              }}
+              noCalendar={true}
+              enableTime={true}
+              required={true}
+            />
+          </Col>
+        </Form.Group>
+        <Form.Group as={Row} style={{ marginTop: "10px" }}>
+          <Form.Label column sm="4" htmlFor="modal-leave">
+            {this.props.t("endTime")}:
+          </Form.Label>
+          <Col sm="8">
+            <DateTimePicker
+              id="modal-leave"
+              value={modalLeave}
+              disabled={noBookableTimeRemaining}
+              onChange={(value: Date | null | [Date | null, Date | null]) => {
+                if (value != null && value instanceof Date) {
+                  this.updateModalBookingRange(modalEnter, value);
+                }
+              }}
+              noCalendar={true}
+              enableTime={true}
+              required={true}
+            />
+          </Col>
+        </Form.Group>
+        {this.renderModalAvailabilityHint(bookingError)}
+      </>
+    );
+  };
+
+  renderModalAvailabilityHint = (bookingError: string) => {
+    if (this.state.modalAvailabilityLoading) {
+      return (
+        <Alert variant="info" style={{ marginTop: "10px" }}>
+          {this.props.t("checkingAvailability")}
+        </Alert>
+      );
+    }
+    if (!bookingError) {
+      return <></>;
+    }
+    return (
+      <Alert variant="danger" style={{ marginTop: "10px" }}>
+        {bookingError}
+      </Alert>
+    );
+  };
+
   onConfirmBooking = (e: any) => {
     if (e) {
       e.preventDefault();
@@ -919,12 +1561,13 @@ class Search extends React.Component<Props, State> {
     this.setState({
       confirmingBooking: true,
     });
+    const [bookingEnter, bookingLeave] = this.getModalBookingRange();
     let booking: any;
     if (this.state.recurrence.active) {
       booking = new RecurringBooking();
       booking.subject = this.state.subject;
-      booking.enter = new Date(this.state.enter);
-      booking.leave = new Date(this.state.leave);
+      booking.enter = new Date(bookingEnter);
+      booking.leave = new Date(bookingLeave);
       if (!RuntimeConfig.INFOS.dailyBasisBooking) {
         booking.leave.setSeconds(booking.leave.getSeconds() - 1);
       }
@@ -936,8 +1579,8 @@ class Search extends React.Component<Props, State> {
     } else {
       booking = new Booking();
       booking.subject = this.state.subject;
-      booking.enter = new Date(this.state.enter);
-      booking.leave = new Date(this.state.leave);
+      booking.enter = new Date(bookingEnter);
+      booking.leave = new Date(bookingLeave);
       if (!RuntimeConfig.INFOS.dailyBasisBooking) {
         booking.leave.setSeconds(booking.leave.getSeconds() - 1);
       }
@@ -1410,6 +2053,7 @@ class Search extends React.Component<Props, State> {
           {
             selectedSpace: null,
             confirmingBooking: false,
+            showConfirm: false,
             showBookingNames: false,
           },
           this.refreshPage,
@@ -1427,6 +2071,7 @@ class Search extends React.Component<Props, State> {
           {
             selectedSpace: null,
             confirmingBooking: false,
+            showConfirm: false,
             showBookingNames: false,
           },
           this.refreshPage,
@@ -1436,11 +2081,12 @@ class Search extends React.Component<Props, State> {
   };
 
   getRecurrenceObject = (): RecurringBooking => {
+    const [bookingEnter, bookingLeave] = this.getModalBookingRange();
     const rb = new RecurringBooking();
     rb.spaceId = this.state.selectedSpace?.id || "";
     rb.subject = this.state.subject;
-    rb.enter = new Date(this.state.enter);
-    rb.leave = new Date(this.state.leave);
+    rb.enter = new Date(bookingEnter);
+    rb.leave = new Date(bookingLeave);
     rb.end = new Date(this.state.recurrence.end);
     if (!RuntimeConfig.INFOS.dailyBasisBooking) {
       rb.leave.setSeconds(rb.leave.getSeconds() - 1);
@@ -1466,8 +2112,9 @@ class Search extends React.Component<Props, State> {
 
   resetRecurrence = () => {
     const weekdays = Object.assign([], this.state.prefWorkdays);
-    if (weekdays.indexOf(this.state.enter.getDay()) === -1) {
-      weekdays.push(this.state.enter.getDay());
+    const [bookingEnter] = this.getModalBookingRange();
+    if (weekdays.indexOf(bookingEnter.getDay()) === -1) {
+      weekdays.push(bookingEnter.getDay());
     }
     this.setState({
       recurrence: {
@@ -1715,51 +2362,35 @@ class Search extends React.Component<Props, State> {
             {({ zoomIn, zoomOut, resetTransform }) => (
               <>
                 {window.innerWidth >= 768 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 70,
-                      right: 10,
-                      zIndex: 10,
-                      border: "1px solid #ccc",
-                      background: "#fff",
-                      borderRadius: "5px",
-                    }}
-                  >
+                  <div className="search-map-floating-ui search-map-floating-ui--minimap">
                     <MiniMap>
                       <div style={floorPlanStyle}></div>
                     </MiniMap>
                   </div>
                 )}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 70,
-                    left: 10,
-                    zIndex: 10,
-                    border: "1px solid #ccc",
-                    background: "#fff",
-                    borderRadius: "5px",
-                  }}
-                >
+                {this.renderDayStatusLegend()}
+                <div className="search-map-floating-ui search-map-floating-ui--zoom">
                   <button
+                    type="button"
                     onClick={() => zoomIn()}
                     aria-label="Zoom in"
-                    className="btn btn-outline-primary btn-sm m-1 d-flex align-items-center justify-content-center"
+                    className="btn search-map-zoom-btn"
                   >
                     <AddIcon />
                   </button>
                   <button
+                    type="button"
                     onClick={() => zoomOut()}
                     aria-label="Zoom out"
-                    className="btn btn-outline-primary btn-sm m-1 d-flex align-items-center justify-content-center"
+                    className="btn search-map-zoom-btn"
                   >
                     <RemoveIcon />
                   </button>
                   <button
+                    type="button"
                     onClick={() => resetTransform()}
                     aria-label="Reset zoom"
-                    className="btn btn-outline-primary btn-sm m-1 d-flex align-items-center justify-content-center"
+                    className="btn search-map-zoom-btn"
                   >
                     <ScanIcon />
                   </button>
@@ -1784,25 +2415,25 @@ class Search extends React.Component<Props, State> {
           onClick={() => this.toggleSearchContainer()}
         >
           <CollapseIcon
-            color={"#000"}
+            color={"#100c0c"}
             height="20px"
             width="20px"
             className="collapse-icon collapse-icon-bigscreen"
           />
           <CollapseIcon2
-            color={"#000"}
+            color={"#100c0c"}
             height="20px"
             width="20px"
             className="collapse-icon collapse-icon-smallscreen"
           />
           <SettingsIcon
-            color={"#555"}
+            color={"#575757"}
             height="26px"
             width="26px"
             className="expand-icon expand-icon-bigscreen"
           />
           <CollapseIcon
-            color={"#555"}
+            color={"#575757"}
             height="20px"
             width="20px"
             className="expand-icon expand-icon-smallscreen"
@@ -1813,7 +2444,7 @@ class Search extends React.Component<Props, State> {
             <div className="me-2">
               <LocationIcon
                 title={this.props.t("area")}
-                color={"#555"}
+                color={"#575757"}
                 height="20px"
                 width="20px"
               />
@@ -1824,7 +2455,7 @@ class Search extends React.Component<Props, State> {
             <div className="me-2">
               <EnterIcon
                 title={this.props.t("enter")}
-                color={"#555"}
+                color={"#575757"}
                 height="20px"
                 width="20px"
               />
@@ -1839,7 +2470,7 @@ class Search extends React.Component<Props, State> {
             <div className="me-2">
               <ExitIcon
                 title={this.props.t("leave")}
-                color={"#555"}
+                color={"#575757"}
                 height="20px"
                 width="20px"
               />
@@ -1858,7 +2489,7 @@ class Search extends React.Component<Props, State> {
               <div className="pt-1 me-2">
                 <LocationIcon
                   title={this.props.t("area")}
-                  color={"#555"}
+                  color={"#575757"}
                   height="20px"
                   width="20px"
                 />
@@ -1912,7 +2543,7 @@ class Search extends React.Component<Props, State> {
               <div className="me-2">
                 <WeekIcon
                   title={this.props.t("date")}
-                  color={"#555"}
+                  color={"#575757"}
                   height="20px"
                   width="20px"
                 />
@@ -1956,13 +2587,9 @@ class Search extends React.Component<Props, State> {
 
               <button
                 type="button"
-                className={`ms-2 btn d-flex align-items-center ${
+                className={`ms-2 btn d-flex align-items-center search-panel-tool-btn ${
                   this.state.selectionMultiDay ? "btn-primary" : "btn-light"
                 }`}
-                style={{
-                  padding: "4px 8px",
-                  borderColor: "#CED4DA",
-                }}
                 onClick={() => {
                   if (this.state.selectionMultiDay) {
                     this.updateEnterAndLeaveDate(
@@ -1978,7 +2605,7 @@ class Search extends React.Component<Props, State> {
               >
                 <CalendarIcon
                   title={this.props.t("multiDay")}
-                  color={this.state.selectionMultiDay ? "#fff" : "#555"}
+                  color={this.state.selectionMultiDay ? "#fff" : "#575757"}
                   height="20px"
                   width="20px"
                 />
@@ -1991,7 +2618,7 @@ class Search extends React.Component<Props, State> {
                 <div className="me-2">
                   <TimeIcon
                     title={this.props.t("time")}
-                    color={"#555"}
+                    color={"#575757"}
                     height="20px"
                     width="20px"
                   />
@@ -2000,13 +2627,9 @@ class Search extends React.Component<Props, State> {
                 <div className="ms-2 w-50">{timeLeavePicker}</div>
                 <button
                   type="button"
-                  className={`ms-2 btn d-flex align-items-center ${
+                  className={`ms-2 btn d-flex align-items-center search-panel-tool-btn ${
                     this.state.selectionAllDay ? "btn-primary" : "btn-light"
                   }`}
-                  style={{
-                    padding: "4px 8px",
-                    borderColor: "#CED4DA",
-                  }}
                   onClick={() => {
                     if (!this.state.selectionAllDay) {
                       this.resetEnterTime = new Date(this.state.enter);
@@ -2029,7 +2652,7 @@ class Search extends React.Component<Props, State> {
                 >
                   <TimerIcon
                     title={this.props.t("allDay")}
-                    color={this.state.selectionAllDay ? "#fff" : "#555"}
+                    color={this.state.selectionAllDay ? "#fff" : "#575757"}
                     height="20px"
                     width="20px"
                   />
@@ -2043,7 +2666,7 @@ class Search extends React.Component<Props, State> {
               <div className="me-2">
                 <MapIcon
                   title={this.props.t("map")}
-                  color={"#555"}
+                  color={"#575757"}
                   height="20px"
                   width="20px"
                 />
@@ -2132,7 +2755,56 @@ class Search extends React.Component<Props, State> {
         </Form>
       </Modal>
     );
+    let bookings: Booking[] = [];
+    if (this.state.selectedSpace) {
+      bookings = Booking.createFromRawArray(
+        this.state.selectedSpace.rawBookings,
+      );
+    }
+    const myBooking = bookings.find(
+      (b) => b.user.email === RuntimeConfig.INFOS.username,
+    );
+    const hasRecurringBooking = bookings.some((booking) =>
+      booking.isRecurring(),
+    );
+    let gotoBooking;
+    if (myBooking) {
+      gotoBooking = (
+        <>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (myBooking.isRecurring()) {
+                getIcal(myBooking.recurringId, true);
+              } else {
+                getIcal(myBooking.id);
+              }
+            }}
+          >
+            <IconCalendar className="feather" style={{ marginRight: "5px" }} />{" "}
+            Event
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => this.cancelBooking(myBooking)}
+            disabled={this.state.confirmingBooking}
+          >
+            {this.props.t("cancelBooking")}
+            {this.state.confirmingBooking ? (
+              <IconLoad
+                className="feather loader"
+                style={{ marginLeft: "5px" }}
+              />
+            ) : (
+              <></>
+            )}
+          </Button>
+        </>
+      );
+    }
     const confirmModalRows = [];
+    const [confirmEnter, confirmLeave] = this.getModalBookingRange();
+    const modalBookingError = this.getModalBookingError();
     confirmModalRows.push({
       label: this.props.t("space"),
       value: this.state.selectedSpace?.name,
@@ -2144,13 +2816,13 @@ class Search extends React.Component<Props, State> {
     confirmModalRows.push({
       label: this.props.t("enter"),
       value: formatter.format(
-        DateUtil.convertToFakeUTCDate(new Date(this.state.enter)),
+        DateUtil.convertToFakeUTCDate(new Date(confirmEnter)),
       ),
     });
     confirmModalRows.push({
       label: this.props.t("leave"),
       value: formatter.format(
-        DateUtil.convertToFakeUTCDate(new Date(this.state.leave)),
+        DateUtil.convertToFakeUTCDate(new Date(confirmLeave)),
       ),
     });
     confirmModalRows.push({
@@ -2203,6 +2875,29 @@ class Search extends React.Component<Props, State> {
                 </Row>
               );
             })}
+            {this.renderModalDayStatusTimeline()}
+            {bookings.map((item) => {
+              return (
+                <span key={`confirm-${item.id}`}>
+                  {this.renderBookingNameRow(item)}
+                </span>
+              );
+            })}
+            <p
+              hidden={!myBooking || !hasRecurringBooking}
+              style={{ marginTop: "15px", marginBottom: "0" }}
+            >
+              <Form.Check
+                type="checkbox"
+                id="confirmCancelAllUpcomingBookings"
+                onChange={(e) =>
+                  this.setState({ cancelSeries: e.target.checked })
+                }
+                checked={this.state.cancelSeries}
+                label={this.props.t("cancelAllUpcomingBookings")}
+              />
+            </p>
+            {this.renderModalBookingTimeControls()}
             <Form.Group
               as={Row}
               style={{ marginTop: "25px" }}
@@ -2371,6 +3066,7 @@ class Search extends React.Component<Props, State> {
             >
               {this.props.t("cancel")}
             </Button>
+            {gotoBooking}
             <Button
               variant={this.state.recurrence.active ? "primary" : "secondary"}
               onClick={() => this.setState({ showRecurringOptions: true })}
@@ -2387,6 +3083,8 @@ class Search extends React.Component<Props, State> {
               variant="primary"
               disabled={
                 this.state.confirmingBooking ||
+                this.state.modalAvailabilityLoading ||
+                !!modalBookingError ||
                 (this.state.recurrence.active &&
                   this.state.recurrence.finalNumBookings === 0)
               }
@@ -2455,51 +3153,6 @@ class Search extends React.Component<Props, State> {
         </Form>
       </Modal>
     );
-    let bookings: Booking[] = [];
-    if (this.state.selectedSpace) {
-      bookings = Booking.createFromRawArray(
-        this.state.selectedSpace.rawBookings,
-      );
-    }
-    const myBooking = bookings.find(
-      (b) => b.user.email === RuntimeConfig.INFOS.username,
-    );
-    let gotoBooking;
-    if (myBooking) {
-      gotoBooking = (
-        <>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              if (myBooking.isRecurring()) {
-                getIcal(myBooking.recurringId, true);
-              } else {
-                getIcal(myBooking.id);
-              }
-            }}
-          >
-            <IconCalendar className="feather" style={{ marginRight: "5px" }} />{" "}
-            Event
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => this.cancelBooking(myBooking)}
-            disabled={this.state.confirmingBooking}
-          >
-            {this.props.t("cancelBooking")}
-            {this.state.confirmingBooking ? (
-              <IconLoad
-                className="feather loader"
-                style={{ marginLeft: "5px" }}
-              />
-            ) : (
-              <></>
-            )}
-          </Button>
-        </>
-      );
-    }
-    let isRecurring = false;
     const bookingNamesModal = (
       <Modal
         show={this.state.showBookingNames}
@@ -2509,14 +3162,11 @@ class Search extends React.Component<Props, State> {
           <Modal.Title>{this.state.selectedSpace?.name}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          {bookings.map((item) => {
-            isRecurring = isRecurring || item.isRecurring();
-            return (
-              <span key={item.user.id}>{this.renderBookingNameRow(item)}</span>
-            );
-          })}
+          {bookings.map((item) => (
+            <span key={item.user.id}>{this.renderBookingNameRow(item)}</span>
+          ))}
           <p
-            hidden={!myBooking || !isRecurring}
+            hidden={!myBooking || !hasRecurringBooking}
             style={{ marginTop: "15px", marginBottom: "0" }}
           >
             <Form.Check

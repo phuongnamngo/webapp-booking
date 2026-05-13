@@ -42,6 +42,9 @@ info:
     - `1009`: User not allowed to book this space
     - `1010`: Booking subject required
     - `1011`: Booking in past
+    - `1012`: Booking violates seat type time rule
+    - `1013`: Office settings are not configured
+    - `1014`: Booking outside office hours
     - `2001`: Presence report date range too long
   version: 1.60.0
   license:
@@ -65,6 +68,8 @@ tags:
     description: Manage spaces (desks/rooms) within locations
   - name: Space Attributes
     description: Manage space attribute definitions
+  - name: Space Types
+    description: Manage seat classifications and booking time rules
   - name: Organizations
     description: Manage organizations and their domains
   - name: Users
@@ -524,6 +529,11 @@ components:
           type: integer
         requireSubject:
           type: boolean
+        enabled:
+          type: boolean
+        spaceTypeId:
+          type: string
+          format: uuid
         attributes:
           type: array
           items:
@@ -573,6 +583,13 @@ components:
           type: integer
         requireSubject:
           type: boolean
+        enabled:
+          type: boolean
+        spaceTypeId:
+          type: string
+          format: uuid
+        spaceType:
+          $ref: "#/components/schemas/GetSpaceTypeResponse"
         attributes:
           type: array
           items:
@@ -613,6 +630,13 @@ components:
           type: integer
         requireSubject:
           type: boolean
+        enabled:
+          type: boolean
+        spaceTypeId:
+          type: string
+          format: uuid
+        spaceType:
+          $ref: "#/components/schemas/GetSpaceTypeResponse"
         allowed:
           type: boolean
           description: Whether the authenticated user is allowed to book this space
@@ -652,6 +676,88 @@ components:
           format: date-time
         subject:
           type: string
+
+    GetSpaceDayStatusBookingResponse:
+      type: object
+      description: Booking segment clamped to the selected day's office hours.
+      properties:
+        id:
+          type: string
+          format: uuid
+        recurringId:
+          type: string
+          description: Recurring booking ID, if this booking belongs to a series
+        userId:
+          type: string
+          format: uuid
+          description: Only visible if showNames is enabled or it's the user's own booking
+        userEmail:
+          type: string
+          format: email
+          description: Only visible if showNames is enabled or it's the user's own booking
+        enter:
+          type: string
+          format: date-time
+        leave:
+          type: string
+          format: date-time
+        subject:
+          type: string
+
+    GetSpaceDayStatusResponse:
+      type: object
+      required: [spaceId, status, officeStart, officeEnd, bookedMinutes, officeMinutes, bookings]
+      properties:
+        spaceId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [available, partially_booked, full]
+          description: >
+            Daily availability status within office hours. `full` means either office hours are
+            fully covered by bookings or no valid slot/time range remains bookable under the
+            current booking rules.
+        officeStart:
+          type: string
+          format: date-time
+          description: Start of office hours on the selected date
+        officeEnd:
+          type: string
+          format: date-time
+          description: End of office hours on the selected date
+        bookedMinutes:
+          type: integer
+          minimum: 0
+          description: Booked minutes after clamping and merging overlaps within office hours
+        officeMinutes:
+          type: integer
+          minimum: 0
+          description: Total number of minutes between officeStart and officeEnd
+        bookings:
+          type: array
+          items:
+            $ref: "#/components/schemas/GetSpaceDayStatusBookingResponse"
+
+    OfficeSettings:
+      type: object
+      description: Singleton `office_settings` model used to configure daily office hours.
+      required: [workStartTime, workEndTime]
+      properties:
+        id:
+          type: integer
+          enum: [1]
+          description: Singleton row ID
+        workStartTime:
+          type: string
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+          example: "08:00"
+          description: Maps to `office_settings.work_start_time`; must be before `workEndTime`
+        workEndTime:
+          type: string
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+          example: "17:00"
+          description: Maps to `office_settings.work_end_time`
 
     SpaceBulkUpdateRequest:
       type: object
@@ -733,6 +839,71 @@ components:
           type: boolean
         locationApplicable:
           type: boolean
+
+    # --- Space Types ---
+    CreateSpaceTypeRequest:
+      type: object
+      required: [name, bookingMode]
+      properties:
+        name:
+          type: string
+          maxLength: 128
+        bookingMode:
+          type: string
+          enum: [flexible_time, fixed_slots]
+        minDurationMinutes:
+          type: integer
+          minimum: 0
+        enabled:
+          type: boolean
+
+    CreateSpaceTypeSlotRequest:
+      type: object
+      required: [label, startTime, endTime]
+      properties:
+        label:
+          type: string
+          maxLength: 128
+        startTime:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+          example: "08:00"
+        endTime:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+          example: "12:00"
+        enabled:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    GetSpaceTypeSlotResponse:
+      allOf:
+        - $ref: "#/components/schemas/CreateSpaceTypeSlotRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            spaceTypeId:
+              type: string
+              format: uuid
+
+    GetSpaceTypeResponse:
+      allOf:
+        - $ref: "#/components/schemas/CreateSpaceTypeRequest"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            organizationId:
+              type: string
+              format: uuid
+            slots:
+              type: array
+              items:
+                $ref: "#/components/schemas/GetSpaceTypeSlotResponse"
 
     SetSpaceAttributeValueRequest:
       type: object
@@ -2842,6 +3013,54 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /location/{locationId}/space/day-status:
+    get:
+      tags: [Spaces]
+      summary: Get daily space status
+      description: |
+        Returns each space's availability status for a selected date, using the configured
+        `office_settings` time range. Bookings are clamped to office hours before
+        booked minutes are calculated. A space is `full` when office hours are fully covered
+        by bookings or when no valid slot/time range remains bookable under the current
+        booking rules.
+      operationId: getSpaceDayStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: locationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-05-12"
+          description: Local date at the location, in `YYYY-MM-DD` format
+      responses:
+        "200":
+          description: Daily status for all spaces in the location
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GetSpaceDayStatusResponse"
+        "400":
+          description: "Bad request, including missing `office_settings` (`X-Error-Code: 1013`)"
+          headers:
+            X-Error-Code:
+              schema:
+                type: integer
+                enum: [1013]
+              description: "`1013` when office settings are not configured"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /location/{locationId}/space/{id}/availability:
     get:
       tags: [Spaces]
@@ -3245,6 +3464,219 @@ paths:
         - BearerAuth: []
       parameters:
         - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          $ref: "#/components/responses/Updated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================
+  # Space Types
+  # ===========================
+  /space-type/:
+    get:
+      tags: [Space Types]
+      summary: Get all space types
+      description: Returns all seat classifications for the user's organization.
+      operationId: getAllSpaceTypes
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of space types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GetSpaceTypeResponse"
+    post:
+      tags: [Space Types]
+      summary: Create a space type
+      description: Creates a new seat classification and booking rule. Requires Space Admin role.
+      operationId: createSpaceType
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpaceTypeRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /space-type/{id}:
+    get:
+      tags: [Space Types]
+      summary: Get a space type
+      description: Returns a single seat classification by ID.
+      operationId: getSpaceType
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Space type details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetSpaceTypeResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Space Types]
+      summary: Update a space type
+      description: Updates an existing seat classification. Requires Space Admin role.
+      operationId: updateSpaceType
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpaceTypeRequest"
+      responses:
+        "204":
+          $ref: "#/components/responses/Updated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [Space Types]
+      summary: Delete a space type
+      description: Deletes a seat classification if it is not assigned to any spaces. Requires Space Admin role.
+      operationId: deleteSpaceType
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          $ref: "#/components/responses/Updated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /space-type/{id}/slot/:
+    post:
+      tags: [Space Types]
+      summary: Create a space type time slot
+      description: Adds a fixed booking slot to a seat classification. Requires Space Admin role.
+      operationId: createSpaceTypeSlot
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpaceTypeSlotRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /space-type/{id}/slot/{slotId}:
+    put:
+      tags: [Space Types]
+      summary: Update a space type time slot
+      description: Updates a fixed booking slot. Requires Space Admin role.
+      operationId: updateSpaceTypeSlot
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: slotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpaceTypeSlotRequest"
+      responses:
+        "204":
+          $ref: "#/components/responses/Updated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Space Types]
+      summary: Delete a space type time slot
+      description: Deletes a fixed booking slot. Requires Space Admin role.
+      operationId: deleteSpaceTypeSlot
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: slotId
           in: path
           required: true
           schema:
@@ -4699,6 +5131,46 @@ paths:
           description: Invalid setting name
         "409":
           $ref: "#/components/responses/Conflict"
+
+  /setting/office-hours:
+    get:
+      tags: [Settings]
+      summary: Get office hours
+      description: Returns the global office-hours configuration. Requires Org Admin role.
+      operationId: getOfficeHours
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Office-hours configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfficeSettings"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Settings]
+      summary: Update office hours
+      description: Creates or updates the global office-hours configuration. Requires Org Admin role.
+      operationId: setOfficeHours
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfficeSettings"
+      responses:
+        "204":
+          $ref: "#/components/responses/Updated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /setting/{name}:
     get:

@@ -20,8 +20,6 @@ interface RuntimeUserInfos {
   customLogoUrl: string;
   defaultTimezone: string;
   disableBuddies: boolean;
-  maxHoursPartiallyBooked: number;
-  maxHoursPartiallyBookedEnabled: boolean;
   featureRecurringBookings: boolean;
   organizationId: string;
   superAdmin: boolean;
@@ -66,8 +64,6 @@ export default class RuntimeConfig {
       noAdminRestrictions: false,
       disableBuddies: false,
       customLogoUrl: "",
-      maxHoursPartiallyBooked: 0,
-      maxHoursPartiallyBookedEnabled: false,
       showNames: false,
       defaultTimezone: "",
       featureRecurringBookings: false,
@@ -142,10 +138,6 @@ export default class RuntimeConfig {
               RuntimeConfig.INFOS.maxHoursBeforeDelete = window.parseInt(
                 s.value,
               );
-            if (s.name === "max_hours_partially_booked")
-              RuntimeConfig.INFOS.maxHoursPartiallyBooked = window.parseInt(
-                s.value,
-              );
             if (s.name === "min_booking_duration_hours")
               RuntimeConfig.INFOS.minBookingDurationHours = window.parseInt(
                 s.value,
@@ -155,9 +147,6 @@ export default class RuntimeConfig {
             RuntimeConfig.INFOS.dailyBasisBooking = s.value === "1";
           if (s.name === "no_admin_restrictions")
             RuntimeConfig.INFOS.noAdminRestrictions = s.value === "1";
-          if (s.name === "max_hours_partially_booked_enabled")
-            RuntimeConfig.INFOS.maxHoursPartiallyBookedEnabled =
-              s.value === "1";
           if (s.name === "show_names")
             RuntimeConfig.INFOS.showNames = s.value === "1";
           if (s.name === "disable_buddies")

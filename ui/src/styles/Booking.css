@@ -13,3 +13,40 @@ body {
 .container {
   display: flex;
 }
+
+.bookings-container {
+  padding-top: 10px;
+  background-color: #E9ECEF;
+}
+
+.btn-bookings-custom {
+  border-color: #B7B9BB;
+  color: #575757;
+  background-color: #FFFFFF;
+}
+
+.rbc-time-view{
+  background-color: #FFFFFF;
+}
+
+
+
+.rbc-today{
+  background-color: #FFEBFC!important;
+}
+
+.rbc-day-slot .rbc-events-container{
+  margin-right: 0px!important;
+}
+
+.rbc-event, .rbc-day-slot .rbc-background-event{
+ background-color: #1CBCA1!important;
+}
+
+.rbc-day-slot .rbc-event, .rbc-day-slot .rbc-background-event{
+  border-color: #1CBCA1!important;
+}
+
+.rbc-current-time-indicator{
+  display: none!important;
+}

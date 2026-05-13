@@ -336,6 +336,30 @@ func (r *BookingRepository) GetAllByRecurringID(recurringID string) ([]*BookingD
 	return result, nil
 }
 
+func (r *BookingRepository) GetAllForSpacesInTime(spaceIDs []string, enter time.Time, leave time.Time) ([]*Booking, error) {
+	if len(spaceIDs) == 0 {
+		return []*Booking{}, nil
+	}
+	var result []*Booking
+	rows, err := GetDatabase().DB().Query("SELECT id, user_id, space_id, enter_time, leave_time, caldav_id, approved, subject, recurring_id "+
+		"FROM bookings "+
+		"WHERE space_id = ANY($1::uuid[]) AND $2 < leave_time AND $3 > enter_time "+
+		"ORDER BY space_id, enter_time", pq.StringArray(spaceIDs), enter, leave)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		e := &Booking{}
+		err = rows.Scan(&e.ID, &e.UserID, &e.SpaceID, &e.Enter, &e.Leave, &e.CalDavID, &e.Approved, &e.Subject, &e.RecurringID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, e)
+	}
+	return result, nil
+}
+
 func (r *BookingRepository) Update(e *Booking) error {
 	_, err := GetDatabase().DB().Exec("UPDATE bookings SET "+
 		"user_id = $1, "+
@@ -509,12 +533,7 @@ func (r *BookingRepository) GetConflicts(spaceID string, enter time.Time, leave 
 	var result []*Booking
 	rows, err := GetDatabase().DB().Query("SELECT id, user_id, space_id, enter_time, leave_time, caldav_id, approved, subject, recurring_id "+
 		"FROM bookings "+
-		"WHERE id::text != $1 AND space_id = $2 AND ("+
-		"($3 >= enter_time AND $3 <= leave_time) OR "+
-		"($4 >= enter_time AND $4 <= leave_time) OR "+
-		"(enter_time >= $3 AND enter_time <= $4) OR "+
-		"(leave_time >= $3 AND leave_time <= $4)"+
-		") "+
+		"WHERE id::text != $1 AND space_id = $2 AND $3 < leave_time AND $4 > enter_time "+
 		"ORDER BY enter_time", excludeBookingID, spaceID, enter, leave)
 	if err != nil {
 		return nil, err

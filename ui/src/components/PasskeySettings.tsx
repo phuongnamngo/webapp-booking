@@ -22,6 +22,7 @@ interface State {
 interface Props {
   t: TranslationFunc;
   hidden?: boolean;
+  className?: string;
   onPasskeyAdded?: () => void;
   onPasskeyDeleted?: () => void;
 }
@@ -134,8 +135,10 @@ class PasskeySettings extends React.Component<Props, State> {
         ? `${window.location.protocol}//${primaryDomain}/ui/preferences`
         : `//${primaryDomain}/ui/preferences`;
     return (
-      <div hidden={this.props.hidden}>
-        <h5 className="mt-5">{this.props.t("passkeys")}</h5>
+      <div hidden={this.props.hidden} className={this.props.className}>
+        <h3 className="preferences-section-title">
+          {this.props.t("passkeys")}
+        </h3>
         <p>{this.props.t("passkeysHint")}</p>
         {loading ? null : (
           <>
@@ -173,7 +176,7 @@ class PasskeySettings extends React.Component<Props, State> {
             )}
             {isPrimaryDomain ? (
               <>
-                <InputGroup className="mb-2" style={{ maxWidth: 400 }}>
+                <InputGroup className="mb-2 preferences-passkey-group">
                   <Form.Control
                     type="text"
                     placeholder={this.props.t("passkeyNamePlaceholder")}
@@ -183,6 +186,7 @@ class PasskeySettings extends React.Component<Props, State> {
                     maxLength={255}
                   />
                   <Button
+                    className="preferences-btn-save"
                     variant="primary"
                     onClick={this.registerPasskey}
                     disabled={registering || !newName.trim()}

@@ -121,6 +121,7 @@ func (a *App) InitializeRouter() {
 	routers["/search/"] = &SearchRouter{}
 	routers["/setting/"] = &SettingsRouter{}
 	routers["/space-attribute/"] = &SpaceAttributeRouter{}
+	routers["/space-type/"] = &SpaceTypeRouter{}
 	routers["/confluence/"] = &ConfluenceRouter{}
 	routers["/uc/"] = &CheckUpdateRouter{}
 	routers["/healthcheck"] = &HealthcheckRouter{}

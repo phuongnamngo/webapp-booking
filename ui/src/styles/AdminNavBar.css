@@ -1,5 +1,14 @@
+.admin-navbar {
+  height: 70px !important;
+ background-color: #100C0C !important;
+ --app-header-accent-start: rgb(243, 45, 25);
+--app-header-accent-end: rgb(141, 26, 15);
+}
+
 .admin-navbar .navbar-brand {
   box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.25);
+  width: 100px !important;
+  flex: 0 0 100px !important;
   min-width: 50px;
 }
 
@@ -17,16 +26,39 @@
 }
 
 .admin-navbar form input {
+  height: 42px;
   border: 0;
-  color: #000;
+  color: #ffffff;
+}
+
+.admin-navbar form input::placeholder {
+  color: #b7b9bb;
+  opacity: 1;
 }
 
 .admin-navbar .form-control-dark {
-  background-color: rgba(255, 255, 255, 0.7);
-  border-color: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: transparent;
 }
 
 .admin-navbar .form-control-dark:focus {
   border-color: transparent;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+  color: #ffffff;
+}
+
+
+.admin-navbar .nav-link.admin-navbar-logout {
+  border: none;
+  padding: 6px !important;
+  font-weight: inherit;
+  background: linear-gradient(
+    270deg,
+    var(--app-header-accent-start) 0%,
+    var(--app-header-accent-end) 100%
+  );
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
 }

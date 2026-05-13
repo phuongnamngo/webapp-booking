@@ -12,6 +12,95 @@ div#__next {
   vertical-align: text-bottom;
 }
 
+/* Headline toolbar (FullLayout): shared label/icon color for outline actions */
+.full-layout-buttons .btn {
+  color: #100c0c;
+}
+
+.full-layout-buttons .btn:hover,
+.full-layout-buttons .btn:focus-visible {
+  color: #100c0c;
+}
+
+/* Gradient fill on text only (tokens match .admin-navbar; vars on selector — main content is outside navbar) */
+.admin-text-gradient-accent {
+  --app-header-accent-start: rgb(243, 45, 25);
+  --app-header-accent-end: rgb(141, 26, 15);
+  background: linear-gradient(
+    270deg,
+    var(--app-header-accent-start) 0%,
+    var(--app-header-accent-end) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-decoration: none;
+}
+
+.admin-text-gradient-accent:hover {
+  opacity: 0.92;
+}
+
+.admin-text-gradient-accent:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--app-header-accent-start);
+  outline-offset: 2px;
+}
+
+/* Settings > domains: Primary label (badge) and set-primary action */
+.settings-domain-primary-label.badge,
+.settings-domain-primary-label.btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 30px;
+  padding: 4px 10px !important;
+  border-radius: 4px;
+  background-color: #5877f2 !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.settings-domain-primary-label.btn:hover,
+.settings-domain-primary-label.btn:focus-visible {
+  background-color: #4a6ae8 !important;
+  color: #fff !important;
+}
+
+/* Settings > domains: Remove domain */
+.settings-domain-remove-btn.btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 36px;
+  padding: 12px 14px !important;
+  border-radius: 6px;
+  border: none !important;
+  background: linear-gradient(270deg, #f32d19 0%, #8d1a0f 100%) !important;
+  color: #fff !important;
+  font-weight: 500;
+  line-height: 1;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.settings-domain-remove-btn.btn:hover {
+  filter: brightness(1.06);
+  color: #fff !important;
+}
+
+.settings-domain-remove-btn.btn:focus-visible {
+  color: #fff !important;
+  box-shadow: 0 0 0 0.2rem rgba(243, 45, 25, 0.45);
+}
+
 .loading-overlay {
   position: fixed;
   top: 0;
@@ -21,8 +110,34 @@ div#__next {
   background-color: rgba(255, 255, 255, 0.4);
 }
 
+.admin-boolean-state {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  padding: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.admin-boolean-state--true {
+  background-color: #1076eb;
+}
+
+.admin-boolean-state--false {
+  background-color: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
 .clickable-table tbody tr {
   cursor: pointer;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > *, .table-striped-columns > :not(caption) > tr > :nth-child(2n){
+  --bs-table-bg-type: #F3F6FA!important;
 }
 
 h2 {
@@ -62,6 +177,11 @@ form .row {
 
 form .row .form-check {
   padding-top: 7px;
+}
+
+.admin-approval-notifications-switch .form-check-input:checked {
+  background-color: #F32D19!important;
+  border-color: #F32D19!important;
 }
 
 @-moz-keyframes spin {

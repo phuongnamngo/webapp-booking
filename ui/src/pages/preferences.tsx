@@ -1,6 +1,6 @@
 import React from "react";
 import Loading from "../components/Loading";
-import { Alert, Button, ButtonGroup, Form, Modal, Nav } from "react-bootstrap";
+import { Alert, Button, Form, Modal } from "react-bootstrap";
 import { NextRouter } from "next/router";
 import { IoLinkOutline } from "react-icons/io5";
 import NavBar from "@/components/NavBar";
@@ -178,7 +178,7 @@ class Preferences extends React.Component<Props, State> {
             if (s.name === UserPreference.PREF_BUDDY_BOOKED_COLOR)
               state.buddyBooked = s.value;
             if (s.name === UserPreference.PREF_DISALLOWED_COLOR)
-              state.disallowedColor = s.value;
+              state.disallowed = s.value;
             if (s.name === UserPreference.PREF_LOCATION_ID)
               state.locationId = s.value;
             if (s.name === UserPreference.PREF_CALDAV_URL)
@@ -451,20 +451,49 @@ class Preferences extends React.Component<Props, State> {
   ) {
     const id = `color${RendererUtils.capitalize(stateKey)}`;
     return (
-      <Form.Group className="margin-top-15 d-flex align-items-center">
-        <Form.Control
-          type="color"
-          key={id}
-          id={id}
-          value={this.state[stateKey]}
-          onChange={(e: any) =>
-            this.setState({ [stateKey]: e.target.value } as any)
-          }
-        />
-        <Form.Label htmlFor={id} className="mb-0">
+      <div className="preferences-color-row" key={id}>
+        <label htmlFor={id} className="preferences-color-swatches">
+          <Form.Control
+            type="color"
+            id={id}
+            value={this.state[stateKey]}
+            onChange={(e: any) =>
+              this.setState({ [stateKey]: e.target.value } as any)
+            }
+            aria-label={this.props.t(labelKey)}
+          />
+        </label>
+        <span className="preferences-color-label">
           {this.props.t(labelKey)}
-        </Form.Label>
-      </Form.Group>
+        </span>
+      </div>
+    );
+  }
+
+  renderPrefsSubnavTab(tabKey: string, label: string): React.ReactElement {
+    const selected = this.state.activeTab === tabKey;
+    return (
+      <button
+        type="button"
+        key={tabKey}
+        role="tab"
+        aria-selected={selected}
+        id={`prefs-subnav-${tabKey}`}
+        className={
+          "preferences-subnav-tab" +
+          (selected ? " preferences-subnav-tab-active" : "")
+        }
+        onClick={() =>
+          this.setState({
+            activeTab: tabKey,
+            error: false,
+            saved: false,
+          })
+        }
+      >
+        <span className="preferences-subnav-tab-label">{label}</span>
+        <span className="preferences-subnav-tab-line" aria-hidden />
+      </button>
     );
   }
 
@@ -476,19 +505,19 @@ class Preferences extends React.Component<Props, State> {
     let hint = <></>;
     if (this.state.saved) {
       hint = (
-        <Alert variant="success" className="margin-top-15">
+        <Alert variant="success" className="preferences-alert">
           {this.props.t("entryUpdated")}
         </Alert>
       );
     } else if (this.state.error) {
       hint = (
-        <Alert variant="danger" className="margin-top-15">
+        <Alert variant="danger" className="preferences-alert">
           {this.props.t("errorSave")}
         </Alert>
       );
     } else if (this.state.caldavError) {
       hint = (
-        <Alert variant="danger" className="margin-top-15">
+        <Alert variant="danger" className="preferences-alert">
           {this.props.t("errorCaldav")}
         </Alert>
       );
@@ -500,44 +529,35 @@ class Preferences extends React.Component<Props, State> {
     return (
       <>
         <NavBar />
-        <div className="container-center-top">
-          <div className="container-center-inner-wide">
-            <Nav
-              variant="underline"
-              activeKey={this.state.activeTab}
-              onSelect={(key) => {
-                if (key)
-                  this.setState({ activeTab: key, error: false, saved: false });
-              }}
+        <div className="container-center-top preferences-layout">
+          <div className="preferences-shell">
+            <nav
+              className="preferences-subnav-bar"
+              aria-label={this.props.t("preferences")}
+              role="tablist"
             >
-              <Nav.Item>
-                <Nav.Link eventKey="tab-bookings">
-                  {this.props.t("bookings")}
-                </Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="tab-style">
-                  {this.props.t("style")}
-                </Nav.Link>
-              </Nav.Item>
-              <Nav.Item hidden={RuntimeConfig.INFOS.idpLogin}>
-                <Nav.Link eventKey="tab-security">
-                  {this.props.t("security")}
-                </Nav.Link>
-              </Nav.Item>
-              <Nav.Item
-                hidden={!RuntimeConfig.INFOS.idpLogin || !profilePageUrl}
-              >
-                <Nav.Link eventKey="tab-idp">
-                  {this.props.t("security")}
-                </Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="tab-integrations">
-                  {this.props.t("integrations")}
-                </Nav.Link>
-              </Nav.Item>
-            </Nav>
+              {this.renderPrefsSubnavTab(
+                "tab-bookings",
+                this.props.t("bookings"),
+              )}
+              {this.renderPrefsSubnavTab("tab-style", this.props.t("style"))}
+              {!RuntimeConfig.INFOS.idpLogin
+                ? this.renderPrefsSubnavTab(
+                  "tab-security",
+                  this.props.t("security"),
+                )
+                : null}
+              {RuntimeConfig.INFOS.idpLogin && profilePageUrl
+                ? this.renderPrefsSubnavTab(
+                  "tab-idp",
+                  this.props.t("security"),
+                )
+                : null}
+              {this.renderPrefsSubnavTab(
+                "tab-integrations",
+                this.props.t("integrations"),
+              )}
+            </nav>
             {hint}
 
             {/* -------- */}
@@ -548,156 +568,183 @@ class Preferences extends React.Component<Props, State> {
               onSubmit={this.onSubmit}
               hidden={this.state.activeTab !== "tab-bookings"}
             >
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="enterTime">
-                  {this.props.t("notice")}
-                </Form.Label>
-                <Form.Select
-                  id="enterTime"
-                  value={this.state.enterTime}
-                  onChange={(e: any) =>
-                    this.setState({ enterTime: e.target.value })
-                  }
-                >
-                  <option value="1">{this.props.t("earliestPossible")}</option>
-                  <option value="2">{this.props.t("nextDay")}</option>
-                  <option value="3">{this.props.t("nextWorkday")}</option>
-                </Form.Select>
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="workdayStart">
-                  {this.props.t("workingHours")}
-                </Form.Label>
-                <div>
-                  <Form.Control
-                    type="number"
-                    id="workdayStart"
-                    value={this.state.workdayStart}
+              <div className="preferences-panel">
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="enterTime">
+                    {this.props.t("notice")}
+                  </Form.Label>
+                  <Form.Select
+                    id="enterTime"
+                    value={this.state.enterTime}
                     onChange={(e: any) =>
-                      this.setState({
-                        workdayStart:
-                          typeof window !== "undefined"
-                            ? window.parseInt(e.target.value)
-                            : 0,
-                      })
+                      this.setState({ enterTime: e.target.value })
                     }
-                    min="0"
-                    max="23"
-                    style={{ display: "inline", width: "40%" }}
-                  />
-                  <span
-                    style={{
-                      width: "20%",
-                      display: "inline-block",
-                      textAlign: "center",
-                    }}
                   >
-                    <Form.Label htmlFor="workdayEnd">
-                      {this.props.t("to").toString()}
-                    </Form.Label>
-                  </span>
-                  <Form.Control
-                    type="number"
-                    id="workdayEnd"
-                    value={this.state.workdayEnd}
-                    onChange={(e: any) =>
-                      this.setState({ workdayEnd: e.target.value })
-                    }
-                    min={this.state.workdayStart + 1}
-                    max="23"
-                    style={{ display: "inline", width: "40%" }}
-                  />
-                </div>
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label>{this.props.t("workdays")}</Form.Label>
-                <div className="text-left">
-                  {[0, 1, 2, 3, 4, 5, 6].map((day) => (
-                    <Form.Check
-                      type="checkbox"
-                      key={"workday-" + day}
-                      id={"workday-" + day}
-                      label={this.props.t("workday-" + day)}
-                      checked={this.state.workdays[day]}
+                    <option value="1">{this.props.t("earliestPossible")}</option>
+                    <option value="2">{this.props.t("nextDay")}</option>
+                    <option value="3">{this.props.t("nextWorkday")}</option>
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="workdayStart">
+                    {this.props.t("workingHours")}
+                  </Form.Label>
+                  <div className="preferences-working-hours-row">
+                    <Form.Control
+                      type="number"
+                      id="workdayStart"
+                      className="preferences-hour-input"
+                      value={this.state.workdayStart}
                       onChange={(e: any) =>
-                        this.onWorkdayCheck(day, e.target.checked)
+                        this.setState({
+                          workdayStart:
+                            typeof window !== "undefined"
+                              ? window.parseInt(e.target.value, 10)
+                              : 0,
+                        })
+                      }
+                      min={0}
+                      max={23}
+                    />
+                    <Form.Label
+                      htmlFor="workdayEnd"
+                      className="preferences-working-hours-sep"
+                    >
+                      {this.props.t("to")}
+                    </Form.Label>
+                    <Form.Control
+                      type="number"
+                      id="workdayEnd"
+                      className="preferences-hour-input"
+                      value={this.state.workdayEnd}
+                      onChange={(e: any) =>
+                        this.setState({
+                          workdayEnd:
+                            typeof window !== "undefined"
+                              ? window.parseInt(e.target.value, 10)
+                              : 0,
+                        })
+                      }
+                      min={this.state.workdayStart + 1}
+                      max={23}
+                    />
+                  </div>
+                </Form.Group>
+                <Form.Group className="preferences-field preferences-workdays-block">
+                  <Form.Label>{this.props.t("workdays")}</Form.Label>
+                  <div className="preferences-workdays-row">
+                    {[0, 1, 2, 3, 4, 5, 6].map((day) => (
+                      <label
+                        key={"workday-" + day}
+                        className="preferences-workday-pill"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!this.state.workdays[day]}
+                          onChange={(e: any) =>
+                            this.onWorkdayCheck(day, e.target.checked)
+                          }
+                        />
+                        <span className="preferences-workday-box">
+                          <span className="preferences-workday-check" />
+                        </span>
+                        <span>{this.props.t("workday-" + day)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </Form.Group>
+                <Form.Group className="preferences-field preferences-workdays-block">
+                  <Form.Label htmlFor="mailNotifications-inline">
+                    {this.props.t("mailNotifications")}
+                  </Form.Label>
+                  <label
+                    htmlFor="mailNotifications-inline"
+                    className="preferences-inline-check"
+                  >
+                    <input
+                      type="checkbox"
+                      id="mailNotifications-inline"
+                      checked={this.state.mailNotifications}
+                      onChange={(e: any) =>
+                        this.setState({
+                          mailNotifications: e.target.checked,
+                        })
                       }
                     />
-                  ))}
-                </div>
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="mailNotifications">
-                  {this.props.t("mailNotifications")}
-                </Form.Label>
-                <div className="text-left">
-                  <Form.Check
-                    type="checkbox"
-                    id="mailNotifications"
-                    label={this.props.t("mailNotifications")}
-                    checked={this.state.mailNotifications}
+                    <span className="preferences-workday-box">
+                      <span className="preferences-workday-check" />
+                    </span>
+                    <span>{this.props.t("mailNotifications")}</span>
+                  </label>
+                </Form.Group>
+                <Form.Group className="preferences-field preferences-workdays-block">
+                  <Form.Label htmlFor="use24HourTime-inline">
+                    {this.props.t("timeFormat")}
+                  </Form.Label>
+                  <label
+                    htmlFor="use24HourTime-inline"
+                    className="preferences-inline-check"
+                  >
+                    <input
+                      type="checkbox"
+                      id="use24HourTime-inline"
+                      checked={this.state.use24HourTime}
+                      onChange={(e: any) =>
+                        this.setState({ use24HourTime: e.target.checked })
+                      }
+                    />
+                    <span className="preferences-workday-box">
+                      <span className="preferences-workday-check" />
+                    </span>
+                    <span>{this.props.t("use24HourTime")}</span>
+                  </label>
+                </Form.Group>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="dateFormat">
+                    {this.props.t("dateFormat")}
+                  </Form.Label>
+                  <Form.Select
+                    id="dateFormat"
+                    value={this.state.dateFormat}
                     onChange={(e: any) =>
-                      this.setState({ mailNotifications: e.target.checked })
+                      this.setState({ dateFormat: e.target.value })
                     }
+                  >
+                    <option value="Y-m-d">Y-m-d</option>
+                    <option value="d.m.Y">d.m.Y</option>
+                    <option value="m/d/Y">m/d/Y</option>
+                    <option value="d/m/Y">d/m/Y</option>
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="preferredLocation">
+                    {this.props.t("preferredLocation")}
+                  </Form.Label>
+                  <Form.Select
+                    id="preferredLocation"
+                    value={this.state.locationId}
+                    onChange={(e: any) =>
+                      this.setState({ locationId: e.target.value })
+                    }
+                  >
+                    <option value="">({this.props.t("none")})</option>
+                    {this.locations.map((location) => (
+                      <option
+                        key={"location-" + location.id}
+                        value={location.id}
+                      >
+                        {location.name}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+                <div>
+                  <SaveButton
+                    submitting={this.state.submitting}
+                    className="preferences-btn-save"
                   />
                 </div>
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="use24HourTime">
-                  {this.props.t("timeFormat")}
-                </Form.Label>
-                <div className="text-left">
-                  <Form.Check
-                    type="checkbox"
-                    id="use24HourTime"
-                    label={this.props.t("use24HourTime")}
-                    checked={this.state.use24HourTime}
-                    onChange={(e: any) =>
-                      this.setState({ use24HourTime: e.target.checked })
-                    }
-                  />
-                </div>
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="dateFormat">
-                  {this.props.t("dateFormat")}
-                </Form.Label>
-                <Form.Select
-                  id="dateFormat"
-                  value={this.state.dateFormat}
-                  onChange={(e: any) =>
-                    this.setState({ dateFormat: e.target.value })
-                  }
-                >
-                  <option value="Y-m-d">Y-m-d</option>
-                  <option value="d.m.Y">d.m.Y</option>
-                  <option value="m/d/Y">m/d/Y</option>
-                  <option value="d/m/Y">d/m/Y</option>
-                </Form.Select>
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="preferredLocation">
-                  {this.props.t("preferredLocation")}
-                </Form.Label>
-                <Form.Select
-                  id="preferredLocation"
-                  value={this.state.locationId}
-                  onChange={(e: any) =>
-                    this.setState({ locationId: e.target.value })
-                  }
-                >
-                  <option value="">({this.props.t("none")})</option>
-                  {this.locations.map((location) => (
-                    <option key={"location-" + location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
-              <SaveButton
-                submitting={this.state.submitting}
-                className="margin-top-15"
-              />
+              </div>
             </Form>
 
             {/* ----- */}
@@ -709,156 +756,193 @@ class Preferences extends React.Component<Props, State> {
               hidden={this.state.activeTab !== "tab-style"}
               className="form-colors"
             >
-              <h5 className="margin-top-15">{this.props.t("bookingcolors")}</h5>
-              {this.renderBookingColor("booked", "colorAlreadyBooked")}
-              {this.renderBookingColor("notBooked", "colorNotBooked")}
-              {this.renderBookingColor("selfBooked", "colorSelfBooked")}
-              {RuntimeConfig.INFOS.maxHoursPartiallyBookedEnabled &&
-                this.renderBookingColor(
-                  "partiallyBooked",
-                  "colorPartiallyBooked",
-                )}
-              {!RuntimeConfig.INFOS.disableBuddies &&
-                this.renderBookingColor("buddyBooked", "colorBuddyBooked")}
-              {this.renderBookingColor("disallowed", "colorDisallowed")}
-              <ButtonGroup className="margin-top-15">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => this.resetColors()}
-                >
-                  {this.props.t("reset")}
-                </Button>
-                <SaveButton submitting={this.state.submitting} />
-              </ButtonGroup>
+              <div className="preferences-panel">
+                <h3 className="preferences-section-title">
+                  {this.props.t("bookingcolors")}
+                </h3>
+                <div className="preferences-color-list">
+                  {this.renderBookingColor("booked", "colorAlreadyBooked")}
+                  {this.renderBookingColor("notBooked", "colorNotBooked")}
+                  {this.renderBookingColor("selfBooked", "colorSelfBooked")}
+                  {this.renderBookingColor(
+                    "partiallyBooked",
+                    "colorPartiallyBooked",
+                  )}
+                  {!RuntimeConfig.INFOS.disableBuddies &&
+                    this.renderBookingColor(
+                      "buddyBooked",
+                      "colorBuddyBooked",
+                    )}
+                  {this.renderBookingColor("disallowed", "colorDisallowed")}
+                </div>
+                <div className="preferences-btn-row">
+                  <Button
+                    type="button"
+                    className="preferences-btn-neutral"
+                    variant="dark"
+                    onClick={() => this.resetColors()}
+                  >
+                    {this.props.t("reset")}
+                  </Button>
+                  <SaveButton
+                    submitting={this.state.submitting}
+                    className="preferences-btn-save"
+                  />
+                </div>
+              </div>
             </Form>
 
             {/* -------- */}
             {/* SECURITY */}
             {/* -------- */}
 
-            <Form
-              onSubmit={this.onSubmitSecurity}
-              hidden={this.state.activeTab !== "tab-security"}
-            >
-              <h5 className="margin-top-15">{this.props.t("password")}</h5>
-              <Form.Group className="margin-top-15">
-                <Form.Check
-                  type="checkbox"
-                  inline={true}
-                  id="check-changePassword"
-                  label={this.props.t("passwordChange")}
-                  checked={this.state.changePassword}
-                  onChange={(e: any) =>
-                    this.setState({ changePassword: e.target.checked })
-                  }
-                />
-                <Form.Control
-                  type="password"
-                  value={this.state.password}
-                  onChange={(e: any) =>
-                    this.setState({ password: e.target.value })
-                  }
-                  required={this.state.changePassword}
-                  disabled={!this.state.changePassword}
-                  minLength={Validation.PASSWORD_MIN_LENGTH}
-                  maxLength={Validation.PASSWORD_MAX_LENGTH}
-                  pattern={Validation.PASSWORD_PATTERN}
-                  title={this.props.t("passwordRequirements")}
-                />
-              </Form.Group>
-              <SaveButton
-                submitting={this.state.submitting}
-                disabled={!this.state.changePassword}
-                className="margin-top-15"
-              />
-            </Form>
-            <TotpSettings
-              hidden={
-                this.state.activeTab !== "tab-security" ||
-                RuntimeConfig.INFOS.idpLogin
-              }
-              t={this.props.t}
-            />
-            <PasskeySettings
-              hidden={
-                this.state.activeTab !== "tab-security" ||
-                RuntimeConfig.INFOS.idpLogin
-              }
-              t={this.props.t}
-              onPasskeyAdded={() => {
-                RuntimeConfig.INFOS.hasPasskeys = true;
-              }}
-              onPasskeyDeleted={() => {
-                Passkey.list().then((passkeys) => {
-                  RuntimeConfig.INFOS.hasPasskeys = passkeys.length > 0;
-                });
-              }}
-            />
             <div hidden={this.state.activeTab !== "tab-security"}>
-              <h5 className="mt-5">{this.props.t("activeSessions")}</h5>
-              {this.state.activeSessions.length === 0 ? (
-                <p>{this.props.t("noActiveSessions")}</p>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>{this.props.t("device")}</th>
-                        <th>{this.props.t("created")} (UTC)</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {this.state.activeSessions.map((session) => (
-                        <tr key={"session-" + session.id}>
-                          <td>
-                            {session.device}
-                            {session.id === this.state.currentSessionId
-                              ? " *"
-                              : ""}
-                          </td>
-                          <td>
-                            {Formatting.getFormatterShort(false).format(
-                              new Date(session.created),
-                            )}
-                          </td>
-                          <td>
-                            <a
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                session
-                                  .delete()
-                                  .then(() => this.loadActiveSessions())
-                                  .catch(() => RuntimeConfig.logOut());
-                              }}
+              <div className="preferences-panel">
+                <Form onSubmit={this.onSubmitSecurity}>
+                  <section className="preferences-security-block">
+                    <h3 className="preferences-section-title">
+                      {this.props.t("password")}
+                    </h3>
+                    <div className="preferences-field">
+                      <Form.Check
+                        type="checkbox"
+                        id="check-changePassword"
+                        label={this.props.t("passwordChange")}
+                        checked={this.state.changePassword}
+                        onChange={(e: any) =>
+                          this.setState({ changePassword: e.target.checked })
+                        }
+                      />
+                      <Form.Control
+                        type="password"
+                        autoComplete="new-password"
+                        value={this.state.password}
+                        onChange={(e: any) =>
+                          this.setState({ password: e.target.value })
+                        }
+                        required={this.state.changePassword}
+                        disabled={!this.state.changePassword}
+                        minLength={Validation.PASSWORD_MIN_LENGTH}
+                        maxLength={Validation.PASSWORD_MAX_LENGTH}
+                        pattern={Validation.PASSWORD_PATTERN}
+                        title={this.props.t("passwordRequirements")}
+                      />
+                    </div>
+                    <div>
+                      <SaveButton
+                        submitting={this.state.submitting}
+                        disabled={!this.state.changePassword}
+                        className="preferences-btn-save"
+                      />
+                    </div>
+                  </section>
+                </Form>
+                <TotpSettings
+                  hidden={RuntimeConfig.INFOS.idpLogin}
+                  className="preferences-security-block"
+                  t={this.props.t}
+                />
+                <PasskeySettings
+                  hidden={RuntimeConfig.INFOS.idpLogin}
+                  className="preferences-security-block"
+                  t={this.props.t}
+                  onPasskeyAdded={() => {
+                    RuntimeConfig.INFOS.hasPasskeys = true;
+                  }}
+                  onPasskeyDeleted={() => {
+                    Passkey.list().then((passkeys) => {
+                      RuntimeConfig.INFOS.hasPasskeys = passkeys.length > 0;
+                    });
+                  }}
+                />
+                <div className="preferences-sessions-wrap">
+                  <h3 className="preferences-sessions-head">
+                    {this.props.t("activeSessions")}
+                  </h3>
+                  {this.state.activeSessions.length === 0 ? (
+                    <p>{this.props.t("noActiveSessions")}</p>
+                  ) : (
+                    <>
+                      <div
+                        className="preferences-sessions-list"
+                        role="table"
+                      >
+                        <div
+                          className="preferences-sessions-header"
+                          role="row"
+                        >
+                          <span role="columnheader">
+                            {this.props.t("device")}
+                          </span>
+                          <span role="columnheader">
+                            {this.props.t("created")} (UTC)
+                          </span>
+                          <span role="columnheader" aria-label="Actions" />
+                        </div>
+                        {this.state.activeSessions.map((session, idx) => (
+                          <React.Fragment key={"session-" + session.id}>
+                            <div
+                              className="preferences-sessions-divider"
+                              aria-hidden
+                            />
+                            <div
+                              className="preferences-sessions-row"
+                              role="row"
                             >
-                              {this.props.t("logout")}
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p>* {this.props.t("thisSession")}</p>
-                  <Button
-                    hidden={this.state.activeSessions?.length <= 1}
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      const others = this.state.activeSessions.filter(
-                        (s) => s.id !== this.state.currentSessionId,
-                      );
-                      Promise.all(others.map((s) => s.delete()))
-                        .then(() => this.loadActiveSessions())
-                        .catch(() => RuntimeConfig.logOut());
-                    }}
-                  >
-                    {this.props.t("logoutOthers")}
-                  </Button>
+                              <span role="cell">
+                                {session.device}
+                                {session.id === this.state.currentSessionId
+                                  ? " *"
+                                  : ""}
+                              </span>
+                              <span role="cell">
+                                {Formatting.getFormatterShort(false).format(
+                                  new Date(session.created),
+                                )}
+                              </span>
+                              <span role="cell">
+                                <button
+                                  type="button"
+                                  className="preferences-link-logout"
+                                  onClick={() => {
+                                    session
+                                      .delete()
+                                      .then(() => this.loadActiveSessions())
+                                      .catch(() => RuntimeConfig.logOut());
+                                  }}
+                                >
+                                  {this.props.t("logout")}
+                                </button>
+                              </span>
+                            </div>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                      <p className="preferences-footnote">
+                        * {this.props.t("thisSession")}
+                      </p>
+                      <div>
+                        <Button
+                          hidden={this.state.activeSessions?.length <= 1}
+                          type="button"
+                          className="preferences-btn-neutral"
+                          variant="dark"
+                          onClick={() => {
+                            const others = this.state.activeSessions.filter(
+                              (s) => s.id !== this.state.currentSessionId,
+                            );
+                            Promise.all(others.map((s) => s.delete()))
+                              .then(() => this.loadActiveSessions())
+                              .catch(() => RuntimeConfig.logOut());
+                          }}
+                        >
+                          {this.props.t("logoutOthers")}
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* --- */}
@@ -866,16 +950,18 @@ class Preferences extends React.Component<Props, State> {
             {/* --- */}
 
             <div hidden={this.state.activeTab !== "tab-idp"}>
-              <div className="text-end">
-                <a
-                  href={profilePageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-secondary btn-sm mb-2"
-                >
-                  <IoLinkOutline className="feather me-1" />
-                  {this.props.t("manageProfile")}
-                </a>
+              <div className="preferences-panel">
+                <div className="text-end">
+                  <a
+                    href={profilePageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn preferences-btn-neutral btn-sm mb-2"
+                  >
+                    <IoLinkOutline className="feather me-1" />
+                    {this.props.t("manageProfile")}
+                  </a>
+                </div>
               </div>
               <iframe
                 src={profilePageUrl}
@@ -892,120 +978,126 @@ class Preferences extends React.Component<Props, State> {
               onSubmit={this.saveCaldavSettings}
               hidden={this.state.activeTab !== "tab-integrations"}
             >
-              <h5 className="margin-top-15">
-                {this.props.t("caldavCalendar")}
-              </h5>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="caldavUrl">
-                  {this.props.t("caldavUrl")}
-                </Form.Label>
-                <Form.Control
-                  id="caldavUrl"
-                  type="url"
-                  value={this.state.caldavUrl}
-                  onChange={(e: any) =>
-                    this.setState({
-                      caldavUrl: e.target.value,
-                      caldavCalendarsLoaded: false,
-                    })
-                  }
-                />
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="caldavUser">
-                  {this.props.t("username")}
-                </Form.Label>
-                <Form.Control
-                  id="caldavUser"
-                  type="text"
-                  value={this.state.caldavUser}
-                  onChange={(e: any) =>
-                    this.setState({
-                      caldavUser: e.target.value,
-                      caldavCalendarsLoaded: false,
-                    })
-                  }
-                />
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="caldavPass">
-                  {this.props.t("password")}
-                </Form.Label>
-                <Form.Control
-                  id="caldavPass"
-                  type="password"
-                  value={this.state.caldavPass}
-                  onChange={(e: any) =>
-                    this.setState({
-                      caldavPass: e.target.value,
-                      caldavCalendarsLoaded: false,
-                    })
-                  }
-                />
-              </Form.Group>
-              <Form.Group className="margin-top-15">
-                <Form.Label htmlFor="caldavCalendar">
-                  {this.props.t("calendar")}
-                </Form.Label>
-                <Form.Select
-                  id="caldavCalendar"
-                  value={this.state.caldavCalendar}
-                  onChange={(e: any) =>
-                    this.setState({ caldavCalendar: e.target.value })
-                  }
-                  disabled={!this.state.caldavCalendarsLoaded}
-                >
-                  {this.state.caldavCalendars.map((cal) => (
-                    <option key={cal.path} value={cal.path}>
-                      {cal.name}
-                    </option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
-              <ButtonGroup className="margin-top-15">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={
-                    this.state.submitting ||
-                    this.state.caldavUrl === "" ||
-                    this.state.caldavUser === "" ||
-                    this.state.caldavPass === ""
-                  }
-                  onClick={() => this.connectCalDav()}
-                >
-                  {this.props.t("connect")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={
-                    this.state.submitting ||
-                    this.state.caldavUrl === "" ||
-                    this.state.caldavUser === "" ||
-                    this.state.caldavPass === "" ||
-                    this.state.caldavCalendar === ""
-                  }
-                  onClick={() => this.disconnectCalDav()}
-                >
-                  {this.props.t("disconnect")}
-                </Button>
-                <SaveButton
-                  submitting={this.state.submitting}
-                  disabled={
-                    !(
-                      this.state.caldavCalendarsLoaded &&
-                      this.state.caldavCalendar != ""
-                    ) || this.state.submitting
-                  }
-                />
-              </ButtonGroup>
+              <div className="preferences-panel">
+                <h3 className="preferences-section-title">
+                  {this.props.t("caldavCalendar")}
+                </h3>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="caldavUrl">
+                    {this.props.t("caldavUrl")}
+                  </Form.Label>
+                  <Form.Control
+                    id="caldavUrl"
+                    type="url"
+                    value={this.state.caldavUrl}
+                    onChange={(e: any) =>
+                      this.setState({
+                        caldavUrl: e.target.value,
+                        caldavCalendarsLoaded: false,
+                      })
+                    }
+                  />
+                </Form.Group>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="caldavUser">
+                    {this.props.t("username")}
+                  </Form.Label>
+                  <Form.Control
+                    id="caldavUser"
+                    type="text"
+                    value={this.state.caldavUser}
+                    onChange={(e: any) =>
+                      this.setState({
+                        caldavUser: e.target.value,
+                        caldavCalendarsLoaded: false,
+                      })
+                    }
+                  />
+                </Form.Group>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="caldavPass">
+                    {this.props.t("password")}
+                  </Form.Label>
+                  <Form.Control
+                    id="caldavPass"
+                    type="password"
+                    value={this.state.caldavPass}
+                    onChange={(e: any) =>
+                      this.setState({
+                        caldavPass: e.target.value,
+                        caldavCalendarsLoaded: false,
+                      })
+                    }
+                  />
+                </Form.Group>
+                <Form.Group className="preferences-field">
+                  <Form.Label htmlFor="caldavCalendar">
+                    {this.props.t("calendar")}
+                  </Form.Label>
+                  <Form.Select
+                    id="caldavCalendar"
+                    className="preferences-calendar-select"
+                    value={this.state.caldavCalendar}
+                    onChange={(e: any) =>
+                      this.setState({ caldavCalendar: e.target.value })
+                    }
+                    disabled={!this.state.caldavCalendarsLoaded}
+                  >
+                    {this.state.caldavCalendars.map((cal) => (
+                      <option key={cal.path} value={cal.path}>
+                        {cal.name}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+                <div className="preferences-btn-row">
+                  <Button
+                    type="button"
+                    className="preferences-btn-neutral"
+                    variant="dark"
+                    disabled={
+                      this.state.submitting ||
+                      this.state.caldavUrl === "" ||
+                      this.state.caldavUser === "" ||
+                      this.state.caldavPass === ""
+                    }
+                    onClick={() => this.connectCalDav()}
+                  >
+                    {this.props.t("connect")}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="preferences-btn-neutral"
+                    variant="dark"
+                    disabled={
+                      this.state.submitting ||
+                      this.state.caldavUrl === "" ||
+                      this.state.caldavUser === "" ||
+                      this.state.caldavPass === "" ||
+                      this.state.caldavCalendar === ""
+                    }
+                    onClick={() => this.disconnectCalDav()}
+                  >
+                    {this.props.t("disconnect")}
+                  </Button>
+                  <SaveButton
+                    submitting={this.state.submitting}
+                    className="preferences-btn-save"
+                    disabled={
+                      !(
+                        this.state.caldavCalendarsLoaded &&
+                        this.state.caldavCalendar != ""
+                      ) || this.state.submitting
+                    }
+                  />
+                </div>
+              </div>
             </Form>
           </div>
         </div>
         <Modal
           show={this.state.showPasswordChangedModal}
-          onHide={() => {}}
+          onHide={() => { }}
           backdrop="static"
           keyboard={false}
         >

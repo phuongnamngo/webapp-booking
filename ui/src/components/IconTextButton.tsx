@@ -5,6 +5,7 @@ interface Props {
   title: string;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
 }
 
 const IconTextButton: React.FC<Props> = ({
@@ -12,15 +13,12 @@ const IconTextButton: React.FC<Props> = ({
   title,
   onClick,
   disabled,
+  className = "",
 }) => {
   return (
     <button
       type="button"
-      className="ms-2 btn d-flex align-items-center"
-      style={{
-        padding: "4px 8px",
-        borderColor: "#CED4DA",
-      }}
+      className={`ms-2 btn btn-light d-flex align-items-center search-panel-outline-btn ${className}`.trim()}
       disabled={disabled}
       onClick={onClick}
       title={title}

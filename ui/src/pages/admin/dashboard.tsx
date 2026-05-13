@@ -205,7 +205,7 @@ class Dashboard extends React.Component<Props, State> {
     }
     return (
       <div>
-        {label} <ProgressBar now={num} className="mb-3" variant={variant} />
+        {label} <ProgressBar now={num} className="mb-3" variant={variant} style={{ color: "#D9D9D9" }} />
       </div>
     );
   };
@@ -280,7 +280,7 @@ class Dashboard extends React.Component<Props, State> {
     return (
       <FullLayout headline="Dashboard">
         {cloudUpgradeHint}
-        {updateHint}
+        {/* {updateHint} */}
         <Row className="mb-4">
           {this.renderStatsCard(
             this.state.stats?.numUsers,
@@ -355,7 +355,7 @@ class Dashboard extends React.Component<Props, State> {
                     </OverlayTrigger>
                   </Card.Title>
                   <Dropdown>
-                    <Dropdown.Toggle variant="outline-secondary" size="sm">
+                    <Dropdown.Toggle variant="outline-secondary" size="sm" style={{ color: "#100C0C" }}>
                       {this.state.selectedLocationId
                         ? this.locations.find(
                             (e) => e.id == this.state.selectedLocationId,

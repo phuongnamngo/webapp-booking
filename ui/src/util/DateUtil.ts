@@ -140,6 +140,16 @@ export default class DateUtil {
 
   /**
    * @param date Date to modify
+   * @returns new Date with the seconds set to a minimum (00.000)
+   */
+  static setSecondsToMin(date: Date): Date {
+    const dateMinSeconds = new Date(date);
+    dateMinSeconds.setSeconds(0, 0);
+    return dateMinSeconds;
+  }
+
+  /**
+   * @param date Date to modify
    * @returns new Date with the hours set to a maximum (23:59:59.999)
    */
   static setHoursToMax(date: Date): Date {

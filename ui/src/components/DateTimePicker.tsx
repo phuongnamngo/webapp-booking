@@ -5,6 +5,7 @@ import { TranslationFunc, withTranslation } from "./withTranslation";
 import RuntimeConfig from "./RuntimeConfig";
 import { CustomLocale } from "flatpickr/dist/types/locale";
 import { english as DefaultLocale } from "flatpickr/dist/l10n/default.js";
+import DateUtil from "@/util/DateUtil";
 
 interface State {
   locale: CustomLocale | undefined;
@@ -78,7 +79,7 @@ class DateTimePicker extends React.Component<Props, State> {
         required={this.props.required}
         onClose={([value]: Date[]) => {
           if (value != null && value instanceof Date)
-            this.props.onChange(value);
+            this.props.onChange(DateUtil.setSecondsToMin(value));
         }}
         options={{
           dateFormat: formatting,

@@ -40,6 +40,7 @@ var DatabaseTables = [...]string{
 	"location_allowed_bookers",
 	"locations",
 	"mail_logs",
+	"office_settings",
 	"organizations",
 	"organizations_domains",
 	"passkeys",
@@ -49,6 +50,8 @@ var DatabaseTables = [...]string{
 	"settings",
 	"space_attribute_values",
 	"space_attributes",
+	"space_type_time_slots",
+	"space_types",
 	"spaces",
 	"spaces_allowed_bookers",
 	"spaces_approvers",
@@ -118,6 +121,7 @@ func CreateTestUserSuperAdmin() *User {
 }
 
 func CreateTestOrg(orgDomain string) *Organization {
+	EnsureTestOfficeSettings()
 	org := &Organization{
 		Name:             "Test Org",
 		ContactEmail:     "foo@seatsurfing.app",
@@ -136,6 +140,12 @@ func CreateTestOrg(orgDomain string) *Organization {
 		panic(err)
 	}
 	return org
+}
+
+func EnsureTestOfficeSettings() {
+	if err := GetOfficeSettingsRepository().Upsert(&OfficeSettings{WorkStartTime: "00:00", WorkEndTime: "23:59"}); err != nil {
+		panic(err)
+	}
 }
 
 func CreateTestUserInOrgWithName(org *Organization, email string, role UserRole) *User {

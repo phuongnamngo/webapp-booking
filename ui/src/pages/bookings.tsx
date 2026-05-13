@@ -11,8 +11,8 @@ import {
   Clock as IconPending,
   RefreshCw as IconRecurring,
   Trello as IconTrello,
-  ArrowLeft as IconArrowLeft,
-  ArrowRight as IconArrowRight,
+  ChevronLeft as IconChevronLeft,
+  ChevronRight as IconChevronRight,
 } from "react-feather";
 import { NextRouter } from "next/router";
 import NavBar from "@/components/NavBar";
@@ -266,7 +266,7 @@ class Bookings extends React.Component<Props, State> {
       }
 
       return (
-        <div style={{ fontSize: "12px" }}>
+        <div style={{ fontSize: "14px" }}>
           {recurringIcon}
           <p hidden={!event.booking.subject}>
             <strong>{event.booking.subject}</strong>
@@ -274,9 +274,11 @@ class Bookings extends React.Component<Props, State> {
           {pending}
           <IconLocation
             className="feather"
-            style={{ width: "12px", height: "12px" }}
+            style={{ width: "14px", height: "14px" }}
           />{" "}
+          <strong>
           {event.booking.space.location.name}, {event.booking.space.name}
+          </strong>
           <br />
         </div>
       );
@@ -302,28 +304,28 @@ class Bookings extends React.Component<Props, State> {
       return (
         <div
           className="custom-toolbar"
-          style={{ marginBottom: "5px", textAlign: "left" }}
+          style={{ marginBottom: "10px", textAlign: "left" }}
         >
           <Link
             href="#"
-            className="btn btn-sm btn-outline-secondary"
+            className="btn btn-sm btn-outline-secondary btn-bookings-custom"
             onClick={goToToday}
           >
             <IconTrello className="feather" /> {this.props.t("today")}
           </Link>{" "}
           <Link
             href="#"
-            className="btn btn-sm btn-outline-secondary"
+            className="btn btn-sm btn-outline-secondary btn-bookings-custom"
             onClick={goToBack}
           >
-            <IconArrowLeft className="feather" />
+            <IconChevronLeft className="feather" />
           </Link>{" "}
           <Link
             href="#"
-            className="btn btn-sm btn-outline-secondary"
+            className="btn btn-sm btn-outline-secondary btn-bookings-custom"
             onClick={goToNext}
           >
-            <IconArrowRight className="feather" />
+            <IconChevronRight className="feather" />
           </Link>{" "}
           <span
             className="toolbar-label"
@@ -348,7 +350,7 @@ class Bookings extends React.Component<Props, State> {
     return (
       <>
         <NavBar />
-        <div className="container-signin">
+        <div className="container-signin bookings-container">
           <div className="d-lg-block d-none container-search-config">
             <div className="content" style={{ paddingTop: "5px" }}>
               <Form>

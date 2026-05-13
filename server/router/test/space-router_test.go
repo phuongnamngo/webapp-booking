@@ -6,11 +6,39 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	. "github.com/seatsurfing/seatsurfing/server/repository"
 	. "github.com/seatsurfing/seatsurfing/server/router"
 	. "github.com/seatsurfing/seatsurfing/server/testutil"
 )
+
+type spaceResponseWithType struct {
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	SpaceTypeID string             `json:"spaceTypeId"`
+	SpaceType   *spaceTypeResponse `json:"spaceType"`
+}
+
+type spaceDayStatusTestResponse struct {
+	SpaceID       string                               `json:"spaceId"`
+	Status        string                               `json:"status"`
+	OfficeStart   time.Time                            `json:"officeStart"`
+	OfficeEnd     time.Time                            `json:"officeEnd"`
+	BookedMinutes int                                  `json:"bookedMinutes"`
+	OfficeMinutes int                                  `json:"officeMinutes"`
+	Bookings      []*spaceDayStatusBookingTestResponse `json:"bookings"`
+}
+
+type spaceDayStatusBookingTestResponse struct {
+	ID          string    `json:"id"`
+	RecurringID string    `json:"recurringId"`
+	UserID      string    `json:"userId"`
+	UserEmail   string    `json:"userEmail"`
+	Enter       time.Time `json:"enter"`
+	Leave       time.Time `json:"leave"`
+	Subject     string    `json:"subject"`
+}
 
 func TestSpacesSameOrgForbidden(t *testing.T) {
 	ClearTestDB()
@@ -140,6 +168,41 @@ func TestSpacesCRUD(t *testing.T) {
 	req = NewHTTPRequest("GET", "/location/"+locationID+"/space/"+id, loginResponse.UserID, nil)
 	res = ExecuteTestRequest(req)
 	CheckTestResponseCode(t, http.StatusNotFound, res.Code)
+}
+
+func TestSpacesRejectForeignSpaceType(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	org2 := CreateTestOrg("test2.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+	spaceType := &SpaceType{
+		OrganizationID: org2.ID,
+		Name:           "Foreign type",
+		BookingMode:    SpaceTypeBookingModeFlexibleTime,
+		Enabled:        true,
+	}
+	CheckTestBool(t, true, GetSpaceTypeRepository().Create(spaceType) == nil)
+
+	payload := `{"name": "Location 1"}`
+	req := NewHTTPRequest("POST", "/location/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	locationID := res.Header().Get("X-Object-Id")
+
+	payload = `{"name": "H234", "x": 50, "y": 100, "width": 200, "height": 300, "rotation": 90, "enabled": true, "spaceTypeId": "` + spaceType.ID + `"}`
+	req = NewHTTPRequest("POST", "/location/"+locationID+"/space/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+
+	payload = `{"creates":[{"name": "H235", "x": 50, "y": 100, "width": 200, "height": 300, "rotation": 90, "enabled": true, "spaceTypeId": "` + spaceType.ID + `"}]}`
+	req = NewHTTPRequest("POST", "/location/"+locationID+"/space/bulk", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody *BulkUpdateResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, len(resBody.Creates))
+	CheckTestBool(t, false, resBody.Creates[0].Success)
 }
 
 func TestSpacesApproversCRUD(t *testing.T) {
@@ -371,6 +434,100 @@ func TestSpacesList(t *testing.T) {
 	CheckTestString(t, "H236", resBody[2].Name)
 }
 
+func TestSpacesListReturnsSpaceType(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	spaceType := &SpaceType{
+		OrganizationID: org.ID,
+		Name:           "Work seat",
+		BookingMode:    SpaceTypeBookingModeFixedSlots,
+		Enabled:        true,
+	}
+	CheckTestBool(t, true, GetSpaceTypeRepository().Create(spaceType) == nil)
+	CheckTestBool(t, true, GetSpaceTypeRepository().CreateSlot(&SpaceTypeSlot{
+		SpaceTypeID: spaceType.ID,
+		Label:       "Morning",
+		StartTime:   "08:00",
+		EndTime:     "12:00",
+		Enabled:     true,
+		SortOrder:   1,
+	}) == nil)
+	CheckTestBool(t, true, GetSpaceTypeRepository().CreateSlot(&SpaceTypeSlot{
+		SpaceTypeID: spaceType.ID,
+		Label:       "Disabled",
+		StartTime:   "18:00",
+		EndTime:     "19:00",
+		Enabled:     false,
+		SortOrder:   2,
+	}) == nil)
+
+	payload := `{"name": "Location 1"}`
+	req := NewHTTPRequest("POST", "/location/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	locationID := res.Header().Get("X-Object-Id")
+
+	payload = `{"name": "A1", "x": 50, "y": 100, "width": 200, "height": 300, "rotation": 90, "enabled": true, "spaceTypeId": "` + spaceType.ID + `"}`
+	req = NewHTTPRequest("POST", "/location/"+locationID+"/space/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	req = NewHTTPRequest("GET", "/location/"+locationID+"/space/", loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var list []spaceResponseWithType
+	json.Unmarshal(res.Body.Bytes(), &list)
+	CheckTestInt(t, 1, len(list))
+	CheckTestString(t, spaceType.ID, list[0].SpaceTypeID)
+	CheckTestString(t, "Work seat", list[0].SpaceType.Name)
+	CheckTestString(t, SpaceTypeBookingModeFixedSlots, list[0].SpaceType.BookingMode)
+	CheckTestInt(t, 1, len(list[0].SpaceType.Slots))
+	CheckTestString(t, "Morning", list[0].SpaceType.Slots[0].Label)
+}
+
+func TestSpaceAvailabilityReturnsSpaceType(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	spaceType := &SpaceType{
+		OrganizationID:     org.ID,
+		Name:               "Meeting room",
+		BookingMode:        SpaceTypeBookingModeFlexibleTime,
+		MinDurationMinutes: 30,
+		Enabled:            true,
+	}
+	CheckTestBool(t, true, GetSpaceTypeRepository().Create(spaceType) == nil)
+
+	payload := `{"name": "Location 1"}`
+	req := NewHTTPRequest("POST", "/location/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	locationID := res.Header().Get("X-Object-Id")
+
+	payload = `{"name": "Meeting A", "x": 50, "y": 100, "width": 200, "height": 300, "rotation": 90, "enabled": true, "spaceTypeId": "` + spaceType.ID + `"}`
+	req = NewHTTPRequest("POST", "/location/"+locationID+"/space/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	enter := "2030-09-01T08:30:00+02:00"
+	leave := "2030-09-01T17:00:00+02:00"
+	req = NewHTTPRequest("GET", "/location/"+locationID+"/space/availability?enter="+url.QueryEscape(enter)+"&leave="+url.QueryEscape(leave), loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var list []spaceResponseWithType
+	json.Unmarshal(res.Body.Bytes(), &list)
+	CheckTestInt(t, 1, len(list))
+	CheckTestString(t, spaceType.ID, list[0].SpaceTypeID)
+	CheckTestString(t, "Meeting room", list[0].SpaceType.Name)
+	CheckTestString(t, SpaceTypeBookingModeFlexibleTime, list[0].SpaceType.BookingMode)
+	CheckTestInt(t, 30, list[0].SpaceType.MinDurationMinutes)
+}
+
 func TestSpacesAvailabilityOuter(t *testing.T) {
 	ClearTestDB()
 	org := CreateTestOrg("test.com")
@@ -531,6 +688,389 @@ func TestSpacesAvailabilityNoBookings(t *testing.T) {
 	CheckTestBool(t, true, resBody[0].Available)
 	CheckTestBool(t, true, resBody[1].Available)
 	CheckTestBool(t, true, resBody[2].Available)
+}
+
+func TestSpaceDayStatusReturnsAvailablePartiallyBookedAndFull(t *testing.T) {
+	_, booker, loginResponse, location, availableSpace, partialSpace, fullSpace := setupSpaceDayStatusTest(t, true)
+	createSpaceDayStatusBooking(t, booker, partialSpace, "2030-09-01T09:00:00+02:00", "2030-09-01T10:00:00+02:00", "partial")
+	createSpaceDayStatusBooking(t, booker, fullSpace, "2030-09-01T08:00:00+02:00", "2030-09-01T11:59:59+02:00", "full")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	available := findSpaceDayStatus(t, resBody, availableSpace.ID)
+	CheckTestString(t, "available", available.Status)
+	CheckTestInt(t, 0, available.BookedMinutes)
+	CheckTestInt(t, 240, available.OfficeMinutes)
+	CheckTestString(t, "2030-09-01T08:00:00+02:00", available.OfficeStart.Format(time.RFC3339))
+	CheckTestString(t, "2030-09-01T12:00:00+02:00", available.OfficeEnd.Format(time.RFC3339))
+	CheckTestInt(t, 0, len(available.Bookings))
+
+	partial := findSpaceDayStatus(t, resBody, partialSpace.ID)
+	CheckTestString(t, "partially_booked", partial.Status)
+	CheckTestInt(t, 60, partial.BookedMinutes)
+	CheckTestInt(t, 1, len(partial.Bookings))
+	CheckTestString(t, booker.ID, partial.Bookings[0].UserID)
+	CheckTestString(t, booker.Email, partial.Bookings[0].UserEmail)
+
+	full := findSpaceDayStatus(t, resBody, fullSpace.ID)
+	CheckTestString(t, "full", full.Status)
+	CheckTestInt(t, 240, full.BookedMinutes)
+}
+
+func TestSpaceDayStatusClampsBookingsToOfficeHours(t *testing.T) {
+	_, booker, loginResponse, location, space, _, _ := setupSpaceDayStatusTest(t, true)
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T06:00:00+02:00", "2030-09-01T14:00:00+02:00", "clamped")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 240, status.BookedMinutes)
+	CheckTestInt(t, 1, len(status.Bookings))
+	CheckTestString(t, "2030-09-01T08:00:00+02:00", status.Bookings[0].Enter.Format(time.RFC3339))
+	CheckTestString(t, "2030-09-01T12:00:00+02:00", status.Bookings[0].Leave.Format(time.RFC3339))
+	CheckTestString(t, "clamped", status.Bookings[0].Subject)
+}
+
+func TestSpaceDayStatusMergesOverlappingBookingsBeforeTotalingMinutes(t *testing.T) {
+	_, booker, loginResponse, location, space, _, _ := setupSpaceDayStatusTest(t, true)
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T09:00:00+02:00", "2030-09-01T11:00:00+02:00", "first")
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T10:00:00+02:00", "2030-09-01T12:00:00+02:00", "second")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "partially_booked", status.Status)
+	CheckTestInt(t, 180, status.BookedMinutes)
+	CheckTestInt(t, 2, len(status.Bookings))
+}
+
+func TestSpaceDayStatusFixedSlotsWithNoRemainingSlotReturnsFull(t *testing.T) {
+	org, booker, loginResponse, location, _, _, space := setupSpaceDayStatusTest(t, true)
+	assignSpaceDayStatusSpaceType(t, org, space, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Morning", StartTime: "08:00", EndTime: "09:00", Enabled: true, SortOrder: 1},
+		{Label: "Late morning", StartTime: "10:00", EndTime: "11:00", Enabled: true, SortOrder: 2},
+	})
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T08:00:00+02:00", "2030-09-01T09:00:00+02:00", "morning")
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T10:00:00+02:00", "2030-09-01T11:00:00+02:00", "late")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 120, status.BookedMinutes)
+	CheckTestInt(t, 2, len(status.Bookings))
+}
+
+func TestSpaceDayStatusFlexibleTimeWithoutRemainingGapReturnsFull(t *testing.T) {
+	org, booker, loginResponse, location, _, _, space := setupSpaceDayStatusTest(t, true)
+	assignSpaceDayStatusSpaceType(t, org, space, SpaceTypeBookingModeFlexibleTime, 90, nil)
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T08:00:00+02:00", "2030-09-01T09:30:00+02:00", "first")
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T10:45:00+02:00", "2030-09-01T12:00:00+02:00", "second")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 165, status.BookedMinutes)
+	CheckTestInt(t, 2, len(status.Bookings))
+}
+
+func TestSpaceDayStatusWithoutSpaceTypeUsesLegacyTimeRangeBookability(t *testing.T) {
+	org, booker, loginResponse, location, _, partialSpace, fullSpace := setupSpaceDayStatusTest(t, true)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "1") == nil)
+	createSpaceDayStatusBooking(t, booker, partialSpace, "2030-09-01T08:00:00+02:00", "2030-09-01T09:00:00+02:00", "partial")
+	createSpaceDayStatusBooking(t, booker, fullSpace, "2030-09-01T08:00:00+02:00", "2030-09-01T11:30:00+02:00", "full")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	partial := findSpaceDayStatus(t, resBody, partialSpace.ID)
+	CheckTestString(t, "partially_booked", partial.Status)
+	CheckTestInt(t, 60, partial.BookedMinutes)
+
+	full := findSpaceDayStatus(t, resBody, fullSpace.ID)
+	CheckTestString(t, "full", full.Status)
+	CheckTestInt(t, 210, full.BookedMinutes)
+}
+
+func TestSpaceDayStatusWithoutSpaceTypeUsesFallbackThirtyMinuteMinimumDuration(t *testing.T) {
+	org, booker, loginResponse, location, thirtyMinuteSpace, tooShortSpace, _ := setupSpaceDayStatusTest(t, true)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0") == nil)
+	createSpaceDayStatusBooking(t, booker, thirtyMinuteSpace, "2030-09-01T08:00:00+02:00", "2030-09-01T11:30:00+02:00", "thirty-min-gap")
+	createSpaceDayStatusBooking(t, booker, tooShortSpace, "2030-09-01T08:00:00+02:00", "2030-09-01T11:31:00+02:00", "twenty-nine-min-gap")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	thirtyMinute := findSpaceDayStatus(t, resBody, thirtyMinuteSpace.ID)
+	CheckTestString(t, "partially_booked", thirtyMinute.Status)
+	CheckTestInt(t, 210, thirtyMinute.BookedMinutes)
+
+	tooShort := findSpaceDayStatus(t, resBody, tooShortSpace.ID)
+	CheckTestString(t, "full", tooShort.Status)
+	CheckTestInt(t, 211, tooShort.BookedMinutes)
+}
+
+func TestSpaceDayStatusFlexibleTimeWithZeroMinimumDoesNotUseLegacyThirtyMinuteFallback(t *testing.T) {
+	org, booker, loginResponse, location, _, _, space := setupSpaceDayStatusTest(t, true)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0") == nil)
+	assignSpaceDayStatusSpaceType(t, org, space, SpaceTypeBookingModeFlexibleTime, 0, nil)
+	createSpaceDayStatusBooking(t, booker, space, "2030-09-01T08:00:00+02:00", "2030-09-01T11:31:00+02:00", "twenty-nine-min-gap")
+
+	resBody := requestSpaceDayStatus(t, loginResponse, location.ID)
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "partially_booked", status.Status)
+	CheckTestInt(t, 211, status.BookedMinutes)
+}
+
+func TestSpaceDayStatusCurrentDayFixedSlotAlreadyStartedReturnsFull(t *testing.T) {
+	org, _, loginResponse, location, space := setupCurrentDaySpaceDayStatusTest(t, "UTC", "00:00", "23:59")
+	assignSpaceDayStatusSpaceType(t, org, space, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "All day", StartTime: "00:00", EndTime: "23:59", Enabled: true, SortOrder: 1},
+	})
+
+	resBody := requestSpaceDayStatusForDate(t, loginResponse, location.ID, time.Now().UTC().Format("2006-01-02"))
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 0, status.BookedMinutes)
+}
+
+func TestSpaceDayStatusCurrentDayFlexibleTimeWithoutRemainingTimeReturnsFull(t *testing.T) {
+	org, _, loginResponse, location, space := setupCurrentDaySpaceDayStatusTest(t, "UTC", "00:00", "23:59")
+	assignSpaceDayStatusSpaceType(t, org, space, SpaceTypeBookingModeFlexibleTime, 24*60, nil)
+
+	resBody := requestSpaceDayStatusForDate(t, loginResponse, location.ID, time.Now().UTC().Format("2006-01-02"))
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 0, status.BookedMinutes)
+}
+
+func TestSpaceDayStatusCurrentDayWithoutSpaceTypeTooShortRemainingGapReturnsFull(t *testing.T) {
+	now := time.Now().UTC()
+	org, _, loginResponse, location, space := setupCurrentDaySpaceDayStatusTest(
+		t,
+		"UTC",
+		"00:00",
+		now.Add(29*time.Minute).Format("15:04"),
+	)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0") == nil)
+
+	resBody := requestSpaceDayStatusForDate(t, loginResponse, location.ID, now.Format("2006-01-02"))
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 0, status.BookedMinutes)
+}
+
+func TestSpaceDayStatusCurrentDayWithoutSpaceTypeTooShortRemainingGapReturnsFullWithDailyBasisBooking(t *testing.T) {
+	now := time.Now().UTC()
+	org, _, loginResponse, location, space := setupCurrentDaySpaceDayStatusTest(
+		t,
+		"UTC",
+		"00:00",
+		now.Add(29*time.Minute).Format("15:04"),
+	)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingDailyBasisBooking.Name, "1") == nil)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0") == nil)
+
+	resBody := requestSpaceDayStatusForDate(t, loginResponse, location.ID, now.Format("2006-01-02"))
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 0, status.BookedMinutes)
+}
+
+func TestSpaceDayStatusCurrentDayUsesLocationTimezoneForClipping(t *testing.T) {
+	timezone, localNow := pickNonUTCCurrentDayTimezoneForSpaceDayStatusTest(t)
+	org, _, loginResponse, location, space := setupCurrentDaySpaceDayStatusTest(
+		t,
+		timezone,
+		"00:00",
+		localNow.Add(29*time.Minute).Format("15:04"),
+	)
+	CheckTestBool(t, true, GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0") == nil)
+
+	resBody := requestSpaceDayStatusForDate(t, loginResponse, location.ID, localNow.Format("2006-01-02"))
+
+	status := findSpaceDayStatus(t, resBody, space.ID)
+	CheckTestString(t, "full", status.Status)
+	CheckTestInt(t, 0, status.BookedMinutes)
+}
+
+func TestSpaceDayStatusMissingOfficeSettingsReturnsBadRequest(t *testing.T) {
+	_, _, loginResponse, location, _, _, _ := setupSpaceDayStatusTest(t, false)
+
+	req := NewHTTPRequest("GET", "/location/"+location.ID+"/space/day-status?date=2030-09-01", loginResponse.UserID, nil)
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1013", res.Header().Get("X-Error-Code"))
+}
+
+func setupSpaceDayStatusTest(t *testing.T, withOfficeSettings bool) (*Organization, *User, *LoginResponse, *Location, *Space, *Space, *Space) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	booker := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(booker.ID)
+	if withOfficeSettings {
+		if err := GetOfficeSettingsRepository().Upsert(&OfficeSettings{WorkStartTime: "08:00", WorkEndTime: "12:00"}); err != nil {
+			t.Fatalf("Could not create office settings: %v", err)
+		}
+	} else {
+		GetDatabase().DB().Exec("DELETE FROM office_settings")
+	}
+	location := &Location{
+		OrganizationID: org.ID,
+		Name:           "Location 1",
+		Timezone:       "Europe/Berlin",
+		Enabled:        true,
+	}
+	if err := GetLocationRepository().Create(location); err != nil {
+		t.Fatalf("Could not create location: %v", err)
+	}
+	availableSpace := createSpaceDayStatusSpace(t, location, "Available")
+	partialSpace := createSpaceDayStatusSpace(t, location, "Partial")
+	fullSpace := createSpaceDayStatusSpace(t, location, "Full")
+	return org, booker, loginResponse, location, availableSpace, partialSpace, fullSpace
+}
+
+func setupCurrentDaySpaceDayStatusTest(t *testing.T, timezone, officeStart, officeEnd string) (*Organization, *User, *LoginResponse, *Location, *Space) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	booker := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(booker.ID)
+	if err := GetOfficeSettingsRepository().Upsert(&OfficeSettings{WorkStartTime: officeStart, WorkEndTime: officeEnd}); err != nil {
+		t.Fatalf("Could not create office settings: %v", err)
+	}
+	location := &Location{
+		OrganizationID: org.ID,
+		Name:           "Today location",
+		Timezone:       timezone,
+		Enabled:        true,
+	}
+	if err := GetLocationRepository().Create(location); err != nil {
+		t.Fatalf("Could not create location: %v", err)
+	}
+	space := createSpaceDayStatusSpace(t, location, "Today space")
+	return org, booker, loginResponse, location, space
+}
+
+func createSpaceDayStatusSpace(t *testing.T, location *Location, name string) *Space {
+	space := &Space{
+		LocationID: location.ID,
+		Name:       name,
+		Enabled:    true,
+	}
+	if err := GetSpaceRepository().Create(space); err != nil {
+		t.Fatalf("Could not create space: %v", err)
+	}
+	return space
+}
+
+func assignSpaceDayStatusSpaceType(t *testing.T, org *Organization, space *Space, mode string, minDurationMinutes int, slots []*SpaceTypeSlot) *SpaceType {
+	spaceType := &SpaceType{
+		OrganizationID:     org.ID,
+		Name:               space.Name + " type",
+		BookingMode:        mode,
+		MinDurationMinutes: minDurationMinutes,
+		Enabled:            true,
+	}
+	if err := GetSpaceTypeRepository().Create(spaceType); err != nil {
+		t.Fatalf("Could not create space type: %v", err)
+	}
+	for _, slot := range slots {
+		slot.SpaceTypeID = spaceType.ID
+		if err := GetSpaceTypeRepository().CreateSlot(slot); err != nil {
+			t.Fatalf("Could not create space type slot: %v", err)
+		}
+	}
+	space.SpaceTypeID = spaceType.ID
+	if err := GetSpaceRepository().Update(space); err != nil {
+		t.Fatalf("Could not update space type: %v", err)
+	}
+	return spaceType
+}
+
+func createSpaceDayStatusBooking(t *testing.T, user *User, space *Space, enter, leave, subject string) *Booking {
+	booking := &Booking{
+		UserID:   user.ID,
+		SpaceID:  space.ID,
+		Enter:    mustParseSpaceDayStatusTime(t, enter),
+		Leave:    mustParseSpaceDayStatusTime(t, leave),
+		Approved: true,
+		Subject:  subject,
+	}
+	if err := GetBookingRepository().Create(booking); err != nil {
+		t.Fatalf("Could not create booking: %v", err)
+	}
+	return booking
+}
+
+func mustParseSpaceDayStatusTime(t *testing.T, value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("Could not parse time %s: %v", value, err)
+	}
+	return parsed
+}
+
+func pickNonUTCCurrentDayTimezoneForSpaceDayStatusTest(t *testing.T) (string, time.Time) {
+	t.Helper()
+	utcNow := time.Now().UTC()
+	utcDate := utcNow.Format("2006-01-02")
+	candidates := []string{
+		"Pacific/Kiritimati",
+		"Pacific/Auckland",
+		"Pacific/Apia",
+		"Pacific/Pago_Pago",
+		"Pacific/Honolulu",
+	}
+	for _, timezone := range candidates {
+		location, err := time.LoadLocation(timezone)
+		if err != nil {
+			t.Fatalf("Could not load timezone %s: %v", timezone, err)
+		}
+		localNow := utcNow.In(location)
+		if localNow.Format("2006-01-02") == utcDate {
+			continue
+		}
+		localEnd := localNow.Add(29 * time.Minute)
+		if localEnd.Year() != localNow.Year() || localEnd.Month() != localNow.Month() || localEnd.Day() != localNow.Day() {
+			continue
+		}
+		return timezone, localNow
+	}
+	t.Fatalf("Could not find non-UTC timezone with shifted current day and stable remaining window")
+	return "", time.Time{}
+}
+
+func requestSpaceDayStatus(t *testing.T, loginResponse *LoginResponse, locationID string) []*spaceDayStatusTestResponse {
+	resBody := requestSpaceDayStatusForDate(t, loginResponse, locationID, "2030-09-01")
+	CheckTestInt(t, 3, len(resBody))
+	return resBody
+}
+
+func requestSpaceDayStatusForDate(t *testing.T, loginResponse *LoginResponse, locationID, date string) []*spaceDayStatusTestResponse {
+	req := NewHTTPRequest("GET", "/location/"+locationID+"/space/day-status?date="+date, loginResponse.UserID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []*spaceDayStatusTestResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &resBody); err != nil {
+		t.Fatalf("Could not parse day status response: %v", err)
+	}
+	return resBody
+}
+
+func findSpaceDayStatus(t *testing.T, list []*spaceDayStatusTestResponse, spaceID string) *spaceDayStatusTestResponse {
+	for _, item := range list {
+		if item.SpaceID == spaceID {
+			return item
+		}
+	}
+	t.Fatalf("Could not find day status for space %s", spaceID)
+	return nil
 }
 
 func createTestSpaces(t *testing.T, loginResponse *LoginResponse) (lID, s1ID, s2ID, s3ID string) {

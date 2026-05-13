@@ -18,6 +18,111 @@ import (
 	. "github.com/seatsurfing/seatsurfing/server/util"
 )
 
+func createBookingTestSpaceWithType(t *testing.T, org *Organization, mode string, minDurationMinutes int, slots []*SpaceTypeSlot) (*Location, *Space) {
+	spaceType := &SpaceType{
+		OrganizationID:     org.ID,
+		Name:               "Typed seat",
+		BookingMode:        mode,
+		MinDurationMinutes: minDurationMinutes,
+		Enabled:            true,
+	}
+	CheckTestBool(t, true, GetSpaceTypeRepository().Create(spaceType) == nil)
+	for _, slot := range slots {
+		slot.SpaceTypeID = spaceType.ID
+		CheckTestBool(t, true, GetSpaceTypeRepository().CreateSlot(slot) == nil)
+	}
+	location := &Location{Name: "Location 1", OrganizationID: org.ID, Enabled: true}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	space := &Space{Name: "A1", LocationID: location.ID, SpaceTypeID: spaceType.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(space) == nil)
+	return location, space
+}
+
+func createBookingTestOfficeSettings(t *testing.T, start, end string) {
+	if err := GetOfficeSettingsRepository().Upsert(&OfficeSettings{WorkStartTime: start, WorkEndTime: end}); err != nil {
+		t.Fatalf("Failed to create office settings: %v", err)
+	}
+}
+
+func createBookingDeleteTestLocationAndSpace(t *testing.T, org *Organization, timezone string) (*Location, *Space) {
+	location := &Location{
+		Name:           "Delete Test Location",
+		OrganizationID: org.ID,
+		Timezone:       timezone,
+		Enabled:        true,
+	}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	space := &Space{
+		Name:       "Delete Test Space",
+		LocationID: location.ID,
+		Enabled:    true,
+	}
+	CheckTestBool(t, true, GetSpaceRepository().Create(space) == nil)
+	return location, space
+}
+
+func createBookingDeleteTestBooking(t *testing.T, user *User, location *Location, space *Space, enter, leave time.Time) *Booking {
+	enterAtLocation, err := GetLocationRepository().AttachTimezoneInformation(enter, location)
+	CheckTestBool(t, true, err == nil)
+	leaveAtLocation, err := GetLocationRepository().AttachTimezoneInformation(leave, location)
+	CheckTestBool(t, true, err == nil)
+	booking := &Booking{
+		UserID:  user.ID,
+		SpaceID: space.ID,
+		Enter:   enterAtLocation,
+		Leave:   leaveAtLocation,
+	}
+	CheckTestBool(t, true, GetBookingRepository().Create(booking) == nil)
+	return booking
+}
+
+func getStartedDeleteTestTimezone(t *testing.T) string {
+	for _, timezone := range []string{
+		"Pacific/Honolulu",
+		"America/Los_Angeles",
+		"America/New_York",
+		"Europe/Berlin",
+		"Asia/Ho_Chi_Minh",
+		"Pacific/Auckland",
+	} {
+		location, err := time.LoadLocation(timezone)
+		if err != nil {
+			continue
+		}
+		if time.Now().In(location).Hour() > 0 {
+			return timezone
+		}
+	}
+	t.Fatalf("failed to pick a timezone for started-booking delete tests")
+	return ""
+}
+
+func getDeleteDayBoundaryTimezone(t *testing.T) string {
+	utcNow := time.Now().UTC()
+	for _, timezone := range []string{
+		"Pacific/Honolulu",
+		"America/Anchorage",
+		"America/Los_Angeles",
+		"America/Denver",
+		"America/Chicago",
+		"America/New_York",
+	} {
+		location, err := time.LoadLocation(timezone)
+		if err != nil {
+			continue
+		}
+		nowAtLocation := time.Now().In(location)
+		if nowAtLocation.Format("2006-01-02") == utcNow.Format("2006-01-02") {
+			continue
+		}
+		if nowAtLocation.Hour() >= 1 {
+			return timezone
+		}
+	}
+	t.Fatalf("failed to pick a timezone for delete day-boundary tests")
+	return ""
+}
+
 func TestBookingsEmptyResult(t *testing.T) {
 	ClearTestDB()
 	loginResponse := CreateLoginTestUser()
@@ -150,6 +255,360 @@ func TestCannotCreateBookingInDisabledSpace(t *testing.T) {
 	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
 	res := ExecuteTestRequest(req)
 	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+}
+
+func TestBookingFlexibleTimeSpaceTypeMinDuration(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "06:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 30, nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00+02:00\", \"leave\": \"2030-09-01T08:15:00+02:00\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1012", res.Header().Get("X-Error-Code"))
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00+02:00\", \"leave\": \"2030-09-01T08:30:00+02:00\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestBookingFixedSlotSpaceTypeAcceptsMatchingSlot(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Morning", StartTime: "08:00", EndTime: "12:00", Enabled: true, SortOrder: 1},
+	})
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00Z\", \"leave\": \"2030-09-01T12:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestBookingFixedSlotSpaceTypeRejectsNonMatchingSlot(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Morning", StartTime: "08:00", EndTime: "12:00", Enabled: true, SortOrder: 1},
+	})
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:30:00Z\", \"leave\": \"2030-09-01T12:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1012", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingSpaceTypeFallbackWhenNoTypeOrDisabledType(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0")
+	createBookingTestOfficeSettings(t, "06:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	location := &Location{Name: "Location 1", OrganizationID: org.ID, Enabled: true}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	spaceWithoutType := &Space{Name: "No type", LocationID: location.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(spaceWithoutType) == nil)
+
+	payload := "{\"spaceId\": \"" + spaceWithoutType.ID + "\", \"enter\": \"2030-09-01T08:30:00+02:00\", \"leave\": \"2030-09-01T08:50:00+02:00\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, strconv.Itoa(ResponseCodeBookingInvalidMinBookingDuration), res.Header().Get("X-Error-Code"))
+
+	payload = "{\"spaceId\": \"" + spaceWithoutType.ID + "\", \"enter\": \"2030-09-01T08:30:00+02:00\", \"leave\": \"2030-09-01T09:00:00+02:00\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	disabledType := &SpaceType{
+		OrganizationID:     org.ID,
+		Name:               "Disabled typed seat",
+		BookingMode:        SpaceTypeBookingModeFixedSlots,
+		MinDurationMinutes: 0,
+		Enabled:            false,
+	}
+	CheckTestBool(t, true, GetSpaceTypeRepository().Create(disabledType) == nil)
+	spaceWithDisabledType := &Space{Name: "A3", LocationID: location.ID, SpaceTypeID: disabledType.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(spaceWithDisabledType) == nil)
+	payload = "{\"spaceId\": \"" + spaceWithDisabledType.ID + "\", \"enter\": \"2030-09-03T10:00:00+02:00\", \"leave\": \"2030-09-03T10:20:00+02:00\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, strconv.Itoa(ResponseCodeBookingInvalidMinBookingDuration), res.Header().Get("X-Error-Code"))
+
+	payload = "{\"spaceId\": \"" + spaceWithDisabledType.ID + "\", \"enter\": \"2030-09-03T10:00:00+02:00\", \"leave\": \"2030-09-03T10:30:00+02:00\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+}
+
+func TestBookingWithoutSpaceTypeUsesLegacyTimeRangeFlow(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	location := &Location{Name: "Location 1", OrganizationID: org.ID, Enabled: true}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	space := &Space{Name: "No type", LocationID: location.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(space) == nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T10:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:30:00Z\", \"leave\": \"2030-09-01T10:30:00Z\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusConflict, res.Code)
+	CheckTestString(t, "1001", res.Header().Get("X-Error-Code"))
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T07:30:00Z\", \"leave\": \"2030-09-01T08:30:00Z\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1014", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingUpdateWithoutSpaceTypeUsesLegacyFallbackMinimumDuration(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	location := &Location{Name: "Location 1", OrganizationID: org.ID, Enabled: true}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	space := &Space{Name: "No type", LocationID: location.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(space) == nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T10:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	id := res.Header().Get("X-Object-Id")
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T09:20:00Z\"}"
+	req = NewHTTPRequest("PUT", "/booking/"+id, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, strconv.Itoa(ResponseCodeBookingInvalidMinBookingDuration), res.Header().Get("X-Error-Code"))
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T09:30:00Z\"}"
+	req = NewHTTPRequest("PUT", "/booking/"+id, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+}
+
+func TestBookingFixedSlotWithNoEnabledSlotsRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "06:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T10:00:00+02:00\", \"leave\": \"2030-09-01T11:00:00+02:00\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1012", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingFixedSlotWithInvalidStoredSlotTimeRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "06:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	spaceType := &SpaceType{
+		OrganizationID:     org.ID,
+		Name:               "Invalid slot type",
+		BookingMode:        SpaceTypeBookingModeFixedSlots,
+		MinDurationMinutes: 0,
+		Enabled:            true,
+	}
+	CheckTestBool(t, true, GetSpaceTypeRepository().Create(spaceType) == nil)
+	_, err := GetDatabase().DB().Exec("INSERT INTO space_type_time_slots (space_type_id, label, start_time, end_time, enabled, sort_order) VALUES ($1, $2, $3, $4, $5, $6)",
+		spaceType.ID, "Invalid", "08:60", "10:00", true, 1)
+	CheckTestBool(t, true, err == nil)
+	location := &Location{Name: "Location 1", OrganizationID: org.ID, Enabled: true}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	space := &Space{Name: "A1", LocationID: location.ID, SpaceTypeID: spaceType.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(space) == nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T10:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1012", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingZeroDurationRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 0, nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T09:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1005", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingFlexibleTimeOutsideOfficeHoursRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 30, nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T07:30:00+02:00\", \"leave\": \"2030-09-01T08:30:00+02:00\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1014", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingUpdateOutsideOfficeHoursRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 30, nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T10:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	id := res.Header().Get("X-Object-Id")
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T07:30:00Z\", \"leave\": \"2030-09-01T08:30:00Z\"}"
+	req = NewHTTPRequest("PUT", "/booking/"+id, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1014", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingOfficeHoursMissingSettingsRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetDatabase().DB().Exec("DELETE FROM office_settings")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 30, nil)
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00+02:00\", \"leave\": \"2030-09-01T08:30:00+02:00\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1013", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingFixedSlotAdjacentBookingsAllowed(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Morning", StartTime: "08:00", EndTime: "12:00", Enabled: true, SortOrder: 1},
+		{Label: "Afternoon", StartTime: "12:00", EndTime: "17:00", Enabled: true, SortOrder: 2},
+	})
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00Z\", \"leave\": \"2030-09-01T12:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T12:00:00Z\", \"leave\": \"2030-09-01T17:00:00Z\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+}
+
+func TestBookingFixedSlotTrueOverlapRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Morning", StartTime: "08:00", EndTime: "12:00", Enabled: true, SortOrder: 1},
+	})
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00Z\", \"leave\": \"2030-09-01T12:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	payload = "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T08:00:00Z\", \"leave\": \"2030-09-01T12:00:00Z\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusConflict, res.Code)
+	CheckTestString(t, "1001", res.Header().Get("X-Error-Code"))
+}
+
+func TestBookingFixedSlotOutsideOfficeHoursRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Early", StartTime: "07:00", EndTime: "08:00", Enabled: true, SortOrder: 1},
+	})
+
+	payload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T07:00:00Z\", \"leave\": \"2030-09-01T08:00:00Z\"}"
+	req := NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1014", res.Header().Get("X-Error-Code"))
 }
 
 func TestBookingsSubjectRequired(t *testing.T) {
@@ -869,6 +1328,122 @@ func TestBookingsInPastAreNotDeletable(t *testing.T) {
 	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
 }
 
+func TestBookingsDeleteStartedBookingRegularUser(t *testing.T) {
+	ClearTestDB()
+	timezone := getStartedDeleteTestTimezone(t)
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingEnableMaxHourBeforeDelete.Name, "0")
+	CreateTestUserOrgAdmin(org)
+	bookingUser := CreateTestUserInOrg(org)
+	location, space := createBookingDeleteTestLocationAndSpace(t, org, timezone)
+	locationTz, err := time.LoadLocation(timezone)
+	CheckTestBool(t, true, err == nil)
+	nowAtLocation := time.Now().In(locationTz)
+	booking := createBookingDeleteTestBooking(
+		t,
+		bookingUser,
+		location,
+		space,
+		nowAtLocation.Add(-30*time.Minute),
+		nowAtLocation.Add(30*time.Minute),
+	)
+
+	req := NewHTTPRequest("DELETE", "/booking/"+booking.ID, bookingUser.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1015", res.Header().Get("X-Error-Code"))
+	loaded, err := GetBookingRepository().GetOne(booking.ID)
+	CheckTestBool(t, true, err == nil)
+	CheckTestString(t, booking.ID, loaded.ID)
+}
+
+func TestBookingsDeleteStartedBookingAdmin(t *testing.T) {
+	ClearTestDB()
+	timezone := getStartedDeleteTestTimezone(t)
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingEnableMaxHourBeforeDelete.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxHoursBeforeDelete.Name, "48")
+	GetSettingsRepository().Set(org.ID, SettingNoAdminRestrictions.Name, "0")
+	adminUser := CreateTestUserOrgAdmin(org)
+	bookingUser := CreateTestUserInOrg(org)
+	location, space := createBookingDeleteTestLocationAndSpace(t, org, timezone)
+	locationTz, err := time.LoadLocation(timezone)
+	CheckTestBool(t, true, err == nil)
+	nowAtLocation := time.Now().In(locationTz)
+	booking := createBookingDeleteTestBooking(
+		t,
+		bookingUser,
+		location,
+		space,
+		nowAtLocation.Add(-30*time.Minute),
+		nowAtLocation.Add(30*time.Minute),
+	)
+
+	req := NewHTTPRequest("DELETE", "/booking/"+booking.ID, adminUser.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+	_, err = GetBookingRepository().GetOne(booking.ID)
+	CheckTestBool(t, true, err != nil)
+}
+
+func TestBookingsDeleteEndedEarlierTodayAdminUsesLocationDayBoundary(t *testing.T) {
+	ClearTestDB()
+	timezone := getDeleteDayBoundaryTimezone(t)
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingEnableMaxHourBeforeDelete.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxHoursBeforeDelete.Name, "48")
+	GetSettingsRepository().Set(org.ID, SettingNoAdminRestrictions.Name, "0")
+	adminUser := CreateTestUserOrgAdmin(org)
+	bookingUser := CreateTestUserInOrg(org)
+	location, space := createBookingDeleteTestLocationAndSpace(t, org, timezone)
+	locationTz, err := time.LoadLocation(timezone)
+	CheckTestBool(t, true, err == nil)
+	nowAtLocation := time.Now().In(locationTz)
+	startOfTodayAtLocation := time.Date(nowAtLocation.Year(), nowAtLocation.Month(), nowAtLocation.Day(), 0, 0, 0, 0, locationTz)
+	booking := createBookingDeleteTestBooking(
+		t,
+		bookingUser,
+		location,
+		space,
+		startOfTodayAtLocation.Add(30*time.Minute),
+		startOfTodayAtLocation.Add(60*time.Minute),
+	)
+
+	req := NewHTTPRequest("DELETE", "/booking/"+booking.ID, adminUser.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+	_, err = GetBookingRepository().GetOne(booking.ID)
+	CheckTestBool(t, true, err != nil)
+}
+
+func TestBookingsDeleteEndedEarlierTodayRegularUser(t *testing.T) {
+	ClearTestDB()
+	timezone := getStartedDeleteTestTimezone(t)
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingEnableMaxHourBeforeDelete.Name, "0")
+	bookingUser := CreateTestUserInOrg(org)
+	location, space := createBookingDeleteTestLocationAndSpace(t, org, timezone)
+	locationTz, err := time.LoadLocation(timezone)
+	CheckTestBool(t, true, err == nil)
+	nowAtLocation := time.Now().In(locationTz)
+	booking := createBookingDeleteTestBooking(
+		t,
+		bookingUser,
+		location,
+		space,
+		nowAtLocation.Add(-90*time.Minute),
+		nowAtLocation.Add(-30*time.Minute),
+	)
+
+	req := NewHTTPRequest("DELETE", "/booking/"+booking.ID, bookingUser.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+	CheckTestString(t, "1015", res.Header().Get("X-Error-Code"))
+	loaded, err := GetBookingRepository().GetOne(booking.ID)
+	CheckTestBool(t, true, err == nil)
+	CheckTestString(t, booking.ID, loaded.ID)
+}
+
 func TestBookingsDeleteToCloseBeingAdmin(t *testing.T) {
 	ClearTestDB()
 	org := CreateTestOrg("test.com")
@@ -967,10 +1542,16 @@ func TestBookingConflictDurationTooShort(t *testing.T) {
 	res = ExecuteTestRequest(req)
 	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
 
-	// Set Min duration equals to 0
+	// Set min duration to 0 so legacy spaces use the 30 minute fallback minimum
 	GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0")
-	// Booking with duration == 1 hour, this SHOULD BE accepted
-	payload = "{\"spaceId\": \"" + spaceID + "\", \"enter\": \"2030-09-03T08:30:00+02:00\", \"leave\": \"2030-09-03T08:30:00+02:00\"}"
+	// Booking shorter than the fallback minimum SHOULD NOT BE accepted
+	payload = "{\"spaceId\": \"" + spaceID + "\", \"enter\": \"2030-09-03T08:30:00+02:00\", \"leave\": \"2030-09-03T08:50:00+02:00\"}"
+	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+
+	// Booking at the fallback minimum SHOULD BE accepted
+	payload = "{\"spaceId\": \"" + spaceID + "\", \"enter\": \"2030-09-03T08:30:00+02:00\", \"leave\": \"2030-09-03T09:00:00+02:00\"}"
 	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
 	res = ExecuteTestRequest(req)
 	CheckTestResponseCode(t, http.StatusCreated, res.Code)
@@ -1024,13 +1605,19 @@ func TestBookingUpdateConflictDurationTooShort(t *testing.T) {
 	res = ExecuteTestRequest(req)
 	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
 
-	// Set Min duration equals to 0
+	// Set min duration to 0 so legacy spaces use the 30 minute fallback minimum
 	GetSettingsRepository().Set(org.ID, SettingMinBookingDurationHours.Name, "0")
-	// Booking with duration == 1 hour, this SHOULD BE accepted
-	payload = "{\"spaceId\": \"" + spaceID + "\", \"enter\": \"2030-09-03T08:30:00+02:00\", \"leave\": \"2030-09-03T08:30:00+02:00\"}"
-	req = NewHTTPRequest("POST", "/booking/", loginResponse.UserID, bytes.NewBufferString(payload))
+	// Booking shorter than the fallback minimum SHOULD NOT BE accepted
+	payload = "{\"spaceId\": \"" + spaceID + "\", \"enter\": \"2030-09-03T08:30:00+02:00\", \"leave\": \"2030-09-03T08:50:00+02:00\"}"
+	req = NewHTTPRequest("PUT", "/booking/"+id, loginResponse.UserID, bytes.NewBufferString(payload))
 	res = ExecuteTestRequest(req)
-	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+
+	// Booking at the fallback minimum SHOULD BE accepted
+	payload = "{\"spaceId\": \"" + spaceID + "\", \"enter\": \"2030-09-03T08:30:00+02:00\", \"leave\": \"2030-09-03T09:00:00+02:00\"}"
+	req = NewHTTPRequest("PUT", "/booking/"+id, loginResponse.UserID, bytes.NewBufferString(payload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
 }
 
 func TestBookingsDeleteForeign(t *testing.T) {
@@ -1540,6 +2127,30 @@ func TestBookingsPastEnterDate(t *testing.T) {
 	CheckTestInt(t, ResponseCodeBookingInPast, errorCode)
 }
 
+func TestBookingsSameDayPastTimeRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingNoAdminRestrictions.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, "5")
+	user := CreateTestUserInOrg(org)
+	adminUser := CreateTestUserOrgAdmin(org)
+	now := time.Now().UTC()
+
+	m := &BookingRequest{
+		Enter: now.Add(time.Hour * -1),
+		Leave: now.Add(time.Hour * 1),
+	}
+
+	router := &BookingRouter{}
+	res, errorCode := router.IsValidBookingAdvance(m, org.ID, user)
+	CheckTestBool(t, false, res)
+	CheckTestInt(t, ResponseCodeBookingInPast, errorCode)
+
+	res, errorCode = router.IsValidBookingAdvance(m, org.ID, adminUser)
+	CheckTestBool(t, false, res)
+	CheckTestInt(t, ResponseCodeBookingInPast, errorCode)
+}
+
 func TestBookingsEarlyMorningEnterDate(t *testing.T) {
 	ClearTestDB()
 	org := CreateTestOrg("test.com")
@@ -1554,8 +2165,9 @@ func TestBookingsEarlyMorningEnterDate(t *testing.T) {
 	}
 
 	router := &BookingRouter{}
-	res, _ := router.IsValidBookingAdvance(m, org.ID, user)
-	CheckTestBool(t, true, res)
+	res, errorCode := router.IsValidBookingAdvance(m, org.ID, user)
+	CheckTestBool(t, false, res)
+	CheckTestInt(t, ResponseCodeBookingInPast, errorCode)
 }
 
 func TestBookingsValidFutureAdvanceDate(t *testing.T) {

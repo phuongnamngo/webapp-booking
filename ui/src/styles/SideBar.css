@@ -4,6 +4,8 @@
 }
 
 .sidebar {
+  --app-header-accent-start: rgb(243, 45, 25);
+  --app-header-accent-end: rgb(141, 26, 15);
   min-width: var(--sidebar-width-collapsed);
   position: fixed;
   top: 0;
@@ -11,9 +13,24 @@
   left: 0;
   z-index: 100;
   /* Behind the navbar */
-  padding: 48px 0 0;
-  /* Height of navbar */
+  padding: 72px 0 0;  /* Height of navbar */
   box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+/* SVG gradient stops (defs live in SideBar.tsx) */
+.sidebar #sidebar-accent-gradient stop:first-child {
+  stop-color: var(--app-header-accent-start);
+}
+
+.sidebar #sidebar-accent-gradient stop:last-child {
+  stop-color: var(--app-header-accent-end);
+}
+
+.sidebar-gradient-svg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .sidebar-sticky {
@@ -43,13 +60,29 @@
   color: #999;
 }
 
-.sidebar .nav-link.active {
-  color: var(--bs-primary);
+.sidebar .nav-link:hover:not(.active):not(.disabled) .feather {
+  color: inherit;
 }
 
-.sidebar .nav-link:hover .feather,
-.sidebar .nav-link.active .feather {
-  color: inherit;
+.sidebar .nav-link.active:not(.disabled) .feather {
+  stroke: url(#sidebar-accent-gradient);
+  color: transparent;
+}
+
+.sidebar .nav-link.active:not(.disabled) .sidebar-nav-text {
+  background: linear-gradient(
+    270deg,
+    var(--app-header-accent-start) 0%,
+    var(--app-header-accent-end) 100%
+  );
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+}
+
+.sidebar .nav-link.active {
+  color: var(--bs-primary);
 }
 
 .sidebar-heading {

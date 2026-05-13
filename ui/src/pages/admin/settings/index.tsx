@@ -30,8 +30,12 @@ import Domain from "@/types/Domain";
 import Organization from "@/types/Organization";
 import AuthProvider from "@/types/AuthProvider";
 import Ajax from "@/util/Ajax";
+import AjaxError from "@/util/AjaxError";
 import User from "@/types/User";
-import OrgSettings from "@/types/Settings";
+import OrgSettings, {
+  OfficeSettings,
+  isValidOfficeHoursRange,
+} from "@/types/Settings";
 import RedirectUtil from "@/util/RedirectUtil";
 
 interface State {
@@ -39,6 +43,8 @@ interface State {
   defaultTimezone: string;
   confluenceServerSharedSecret: string;
   customLogoUrl: string;
+  workStartTime: string;
+  workEndTime: string;
   maxBookingsPerUser: number;
   maxConcurrentBookingsPerUser: number;
   maxDaysInAdvance: number;
@@ -47,8 +53,6 @@ interface State {
   subjectDefault: number;
   enableMaxHoursBeforeDelete: boolean;
   maxHoursBeforeDelete: number;
-  maxHoursPartiallyBooked: number;
-  maxHoursPartiallyBookedEnabled: boolean;
   maxBookingDurationHours: number;
   minBookingDurationHours: number;
   targetUtilizationHoursPerWeek: number;
@@ -93,6 +97,8 @@ class Settings extends React.Component<Props, State> {
       defaultTimezone: "",
       confluenceServerSharedSecret: "",
       customLogoUrl: "",
+      workStartTime: "",
+      workEndTime: "",
       maxBookingsPerUser: 0,
       maxConcurrentBookingsPerUser: 0,
       maxBookingDurationHours: 0,
@@ -104,8 +110,6 @@ class Settings extends React.Component<Props, State> {
       subjectDefault: 0,
       enableMaxHoursBeforeDelete: false,
       maxHoursBeforeDelete: 0,
-      maxHoursPartiallyBooked: 0,
-      maxHoursPartiallyBookedEnabled: false,
       dailyBasisBooking: false,
       noAdminRestrictions: false,
       showNames: false,
@@ -135,10 +139,11 @@ class Settings extends React.Component<Props, State> {
     }
     let promises = [
       this.loadSettings(),
+      this.loadOfficeSettings(),
       this.loadItems(),
       this.loadAuthProviders(),
       this.loadTimezones(),
-      this.checkUpdates(),
+      // this.checkUpdates(),
     ];
     Promise.all(promises).then(() => {
       this.setState({ loading: false });
@@ -233,10 +238,6 @@ class Settings extends React.Component<Props, State> {
           state.allowBookingNonExistUsers = s.value === "1";
         if (s.name === "disable_buddies")
           state.disableBuddies = s.value === "1";
-        if (s.name === "max_hours_partially_booked_enabled")
-          state.maxHoursPartiallyBookedEnabled = s.value === "1";
-        if (s.name === "max_hours_partially_booked")
-          state.maxHoursPartiallyBooked = window.parseInt(s.value);
         if (s.name === "feature_no_user_limit")
           state.featureNoUserLimit = s.value === "1";
         if (s.name === "feature_custom_domains")
@@ -260,6 +261,22 @@ class Settings extends React.Component<Props, State> {
     });
   };
 
+  loadOfficeSettings = async (): Promise<void> => {
+    return OfficeSettings.get()
+      .then((settings) => {
+        this.setState({
+          workStartTime: settings.workStartTime,
+          workEndTime: settings.workEndTime,
+        });
+      })
+      .catch((err) => {
+        if (err instanceof AjaxError && err.httpStatusCode === 404) {
+          return;
+        }
+        throw err;
+      });
+  };
+
   loadTimezones = async (): Promise<void> => {
     return Ajax.get("/setting/timezones").then((res) => {
       this.timezones = res.json;
@@ -268,6 +285,18 @@ class Settings extends React.Component<Props, State> {
 
   onSubmit = (e: any) => {
     e.preventDefault();
+    if (
+      !isValidOfficeHoursRange(
+        this.state.workStartTime,
+        this.state.workEndTime,
+      )
+    ) {
+      this.setState({
+        saved: false,
+        error: true,
+      });
+      return;
+    }
     this.setState({
       submitting: true,
       saved: false,
@@ -328,14 +357,6 @@ class Settings extends React.Component<Props, State> {
         this.state.maxBookingDurationHours.toString(),
       ),
       new OrgSettings(
-        "max_hours_partially_booked_enabled",
-        this.state.maxHoursPartiallyBookedEnabled ? "1" : "0",
-      ),
-      new OrgSettings(
-        "max_hours_partially_booked",
-        this.state.maxHoursPartiallyBooked.toString(),
-      ),
-      new OrgSettings(
         "min_booking_duration_hours",
         this.state.minBookingDurationHours.toString(),
       ),
@@ -354,7 +375,13 @@ class Settings extends React.Component<Props, State> {
       new OrgSettings("enforce_totp", this.state.enforceTOTP ? "1" : "0"),
       new OrgSettings("subject_default", this.state.subjectDefault.toString()),
     ];
-    OrgSettings.setAll(payload)
+    const officeSettings = new OfficeSettings(
+      this.state.workStartTime,
+      this.state.workEndTime,
+    );
+    officeSettings
+      .save()
+      .then(() => OrgSettings.setAll(payload))
       .then(() => {
         RuntimeConfig.loadSettings()
           .then(() => {
@@ -593,11 +620,17 @@ class Settings extends React.Component<Props, State> {
           &nbsp;
           {accessibleCheckmark}
           &nbsp;
-          <Badge hidden={!domain.primary}>Primary</Badge>
+          <Badge
+            className="settings-domain-primary-label"
+            hidden={!domain.primary}
+          >
+            Primary
+          </Badge>
           &nbsp;
           <Button
             variant="secondary"
             size="sm"
+            className="settings-domain-primary-label"
             hidden={domain.primary}
             onClick={() => this.setPrimaryDomain(domain.domain)}
           >
@@ -607,6 +640,7 @@ class Settings extends React.Component<Props, State> {
           <Button
             variant="danger"
             size="sm"
+            className="settings-domain-remove-btn"
             hidden={domain.domain.endsWith(".seatsurfing.app")}
             onClick={() => this.removeDomain(domain.domain)}
           >
@@ -725,7 +759,12 @@ class Settings extends React.Component<Props, State> {
                 {this.org?.contactFirstname} {this.org?.contactLastname} (
                 {this.org?.contactEmail})
               </p>
-              <Link href={`/admin/settings/org`}>{this.props.t("edit")}</Link>
+              <Link
+                href={`/admin/settings/org`}
+                className="admin-text-gradient-accent"
+              >
+                {this.props.t("edit")}
+              </Link>
             </Col>
           </Form.Group>
           <Form.Group as={Row}>
@@ -740,12 +779,12 @@ class Settings extends React.Component<Props, State> {
               />
             </Col>
           </Form.Group>
-          <Form.Group as={Row} hidden={RuntimeConfig.INFOS.cloudHosted}>
+          {/* <Form.Group as={Row} hidden={RuntimeConfig.INFOS.cloudHosted}>
             <Form.Label column sm="2">
               Version
             </Form.Label>
             <Col sm="4">{updateHint}</Col>
-          </Form.Group>
+          </Form.Group> */}
           <Form.Group as={Row}>
             <Form.Label column sm="2" htmlFor="input-customLogoUrl">
               {this.props.t("customLogoUrl")}
@@ -761,6 +800,37 @@ class Settings extends React.Component<Props, State> {
               />
               <Form.Text className="text-muted">
                 {this.props.t("customLogoUrlHint")}
+              </Form.Text>
+            </Col>
+          </Form.Group>
+          <Form.Group as={Row}>
+            <Form.Label column sm="2" htmlFor="input-workStartTime">
+              {this.props.t("officeHours")}
+            </Form.Label>
+            <Col sm="4">
+              <InputGroup>
+                <Form.Control
+                  id="input-workStartTime"
+                  type="time"
+                  value={this.state.workStartTime}
+                  onChange={(e: any) =>
+                    this.setState({ workStartTime: e.target.value })
+                  }
+                  required
+                />
+                <InputGroup.Text>{this.props.t("to")}</InputGroup.Text>
+                <Form.Control
+                  id="input-workEndTime"
+                  type="time"
+                  value={this.state.workEndTime}
+                  onChange={(e: any) =>
+                    this.setState({ workEndTime: e.target.value })
+                  }
+                  required
+                />
+              </InputGroup>
+              <Form.Text className="text-muted">
+                {this.props.t("officeHoursHint")}
               </Form.Text>
             </Col>
           </Form.Group>
@@ -880,35 +950,6 @@ class Settings extends React.Component<Props, State> {
                   max="9999"
                   disabled={!this.state.enableMaxHoursBeforeDelete}
                 />
-              </InputGroup>
-            </Col>
-          </Form.Group>
-          <Form.Group as={Row}>
-            <Form.Label column sm="2" htmlFor="input-maxHoursPartiallyBooked">
-              {this.props.t("maxHoursPartiallyBooked")}
-            </Form.Label>
-            <Col sm="4">
-              <InputGroup>
-                <InputGroup.Checkbox
-                  checked={this.state.maxHoursPartiallyBookedEnabled}
-                  onChange={(e: any) =>
-                    this.setState({
-                      maxHoursPartiallyBookedEnabled: e.target.checked,
-                    })
-                  }
-                />
-                <Form.Control
-                  id="input-maxHoursPartiallyBooked"
-                  type="number"
-                  value={this.state.maxHoursPartiallyBooked}
-                  onChange={(e: any) =>
-                    this.setState({ maxHoursPartiallyBooked: e.target.value })
-                  }
-                  min="0"
-                  max="9999"
-                  disabled={!this.state.maxHoursPartiallyBookedEnabled}
-                />
-                <InputGroup.Text>{this.props.t("hours")}</InputGroup.Text>
               </InputGroup>
             </Col>
           </Form.Group>
@@ -1181,6 +1222,7 @@ class Settings extends React.Component<Props, State> {
                       ? ""
                       : " disabled")
                   }
+                  style={{ color: "#100C0C" }}
                 >
                   <IconPlus className="feather" /> {this.props.t("add")}
                 </Link>

@@ -43,8 +43,6 @@ var (
 	SettingMinBookingDurationHours        SettingName = SettingName{Name: "min_booking_duration_hours", Type: SettingTypeInt}
 	SettingMaxBookingDurationHours        SettingName = SettingName{Name: "max_booking_duration_hours", Type: SettingTypeInt}
 	SettingTargetUtilizationHoursPerWeek  SettingName = SettingName{Name: "target_utilization_hours_per_week", Type: SettingTypeInt}
-	SettingMaxHoursPartiallyBooked        SettingName = SettingName{Name: "max_hours_partially_booked", Type: SettingTypeInt}
-	SettingMaxHoursPartiallyBookedEnabled SettingName = SettingName{Name: "max_hours_partially_booked_enabled", Type: SettingTypeBool}
 	SettingDailyBasisBooking              SettingName = SettingName{Name: "daily_basis_booking", Type: SettingTypeBool}
 	SettingNoAdminRestrictions            SettingName = SettingName{Name: "no_admin_restrictions", Type: SettingTypeBool}
 	SettingCustomLogoUrl                  SettingName = SettingName{Name: "custom_logo_url", Type: SettingTypeString}
@@ -272,8 +270,6 @@ func (r *SettingsRepository) InitDefaultSettingsForOrg(organizationID string) er
 		"($1, '"+SettingMaxConcurrentBookingsPerUser.Name+"', '0'), "+
 		"($1, '"+SettingEnableMaxHourBeforeDelete.Name+"', '0'), "+
 		"($1, '"+SettingMaxHoursBeforeDelete.Name+"', '0'), "+
-		"($1, '"+SettingMaxHoursPartiallyBookedEnabled.Name+"', '0'), "+
-		"($1, '"+SettingMaxHoursPartiallyBooked.Name+"', '8'), "+
 		"($1, '"+SettingMinBookingDurationHours.Name+"', '0'), "+
 		"($1, '"+SettingTargetUtilizationHoursPerWeek.Name+"', '40'), "+
 		"($1, '"+SettingMaxDaysInAdvance.Name+"', '14'), "+

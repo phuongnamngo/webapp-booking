@@ -28,6 +28,11 @@ type GetSettingsResponse struct {
 	Value string `json:"value"`
 }
 
+type OfficeSettingsResponse struct {
+	WorkStartTime string `json:"workStartTime"`
+	WorkEndTime   string `json:"workEndTime"`
+}
+
 type SettingsRouterAdminMenuItem struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`
@@ -52,6 +57,8 @@ var (
 
 func (router *SettingsRouter) SetupRoutes(s *mux.Router) {
 	s.HandleFunc("/timezones", router.getTimezones).Methods("GET")
+	s.HandleFunc("/office-hours", router.getOfficeHours).Methods("GET")
+	s.HandleFunc("/office-hours", router.setOfficeHours).Methods("PUT")
 	s.HandleFunc("/{name}", router.getSetting).Methods("GET")
 	s.HandleFunc("/{name}", router.setSetting).Methods("PUT")
 	s.HandleFunc("/", router.getAll).Methods("GET")
@@ -60,6 +67,47 @@ func (router *SettingsRouter) SetupRoutes(s *mux.Router) {
 
 func (router *SettingsRouter) getTimezones(w http.ResponseWriter, r *http.Request) {
 	SendJSON(w, TimeZones)
+}
+
+func (router *SettingsRouter) getOfficeHours(w http.ResponseWriter, r *http.Request) {
+	user := GetRequestUser(r)
+	if !CanAdminOrg(user, user.OrganizationID) {
+		SendForbidden(w)
+		return
+	}
+	officeSettings, err := GetOfficeSettingsRepository().Get()
+	if err != nil {
+		if errors.Is(err, ErrOfficeSettingsMissing) {
+			SendNotFound(w)
+			return
+		}
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	SendJSON(w, router.copyOfficeSettingsToRestModel(officeSettings))
+}
+
+func (router *SettingsRouter) setOfficeHours(w http.ResponseWriter, r *http.Request) {
+	user := GetRequestUser(r)
+	if !CanAdminOrg(user, user.OrganizationID) {
+		SendForbidden(w)
+		return
+	}
+	var value OfficeSettingsResponse
+	if UnmarshalBody(r, &value) != nil {
+		SendBadRequest(w)
+		return
+	}
+	officeSettings := &OfficeSettings{
+		WorkStartTime: value.WorkStartTime,
+		WorkEndTime:   value.WorkEndTime,
+	}
+	if err := GetOfficeSettingsRepository().Upsert(officeSettings); err != nil {
+		SendBadRequest(w)
+		return
+	}
+	SendUpdated(w)
 }
 
 func (router *SettingsRouter) getSetting(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +284,13 @@ func (router *SettingsRouter) copyToRestModel(e *OrgSetting) *GetSettingsRespons
 	return m
 }
 
+func (router *SettingsRouter) copyOfficeSettingsToRestModel(e *OfficeSettings) *OfficeSettingsResponse {
+	return &OfficeSettingsResponse{
+		WorkStartTime: e.WorkStartTime,
+		WorkEndTime:   e.WorkEndTime,
+	}
+}
+
 func (router *SettingsRouter) isValidSettingNameReadPublic(name string) bool {
 	if name == SettingMaxBookingsPerUser.Name ||
 		name == SettingMaxConcurrentBookingsPerUser.Name ||
@@ -252,8 +307,6 @@ func (router *SettingsRouter) isValidSettingNameReadPublic(name string) bool {
 		name == SettingMaxHoursBeforeDelete.Name ||
 		name == SettingEnableMaxHourBeforeDelete.Name ||
 		name == SettingMinBookingDurationHours.Name ||
-		name == SettingMaxHoursPartiallyBooked.Name ||
-		name == SettingMaxHoursPartiallyBookedEnabled.Name ||
 		name == SettingFeatureNoUserLimit.Name ||
 		name == SettingFeatureCustomDomains.Name ||
 		name == SettingFeatureGroups.Name ||
@@ -302,8 +355,6 @@ func (router *SettingsRouter) isValidSettingNameWrite(name string) bool {
 		name == SettingNoAdminRestrictions.Name ||
 		name == SettingCustomLogoUrl.Name ||
 		name == SettingShowNames.Name ||
-		name == SettingMaxHoursPartiallyBooked.Name ||
-		name == SettingMaxHoursPartiallyBookedEnabled.Name ||
 		name == SettingAllowBookingsNonExistingUsers.Name ||
 		name == SettingMaxBookingDurationHours.Name ||
 		name == SettingDisableBuddies.Name ||
@@ -369,12 +420,6 @@ func (router *SettingsRouter) getSettingType(name string) SettingType {
 	if name == SettingCustomLogoUrl.Name {
 		return SettingCustomLogoUrl.Type
 	}
-	if name == SettingMaxHoursPartiallyBooked.Name {
-		return SettingMaxHoursPartiallyBooked.Type
-	}
-	if name == SettingMaxHoursPartiallyBookedEnabled.Name {
-		return SettingMaxHoursPartiallyBookedEnabled.Type
-	}
 	if name == SettingMinBookingDurationHours.Name {
 		return SettingMinBookingDurationHours.Type
 	}
@@ -438,7 +483,7 @@ func (router *SettingsRouter) isValidSettingValue(name string, value string) boo
 		return true
 	}
 	if name == SettingMaxConcurrentBookingsPerUser.Name || name == SettingMaxDaysInAdvance.Name || name == SettingMaxHoursBeforeDelete.Name ||
-		name == SettingMaxHoursPartiallyBooked.Name || name == SettingMaxBookingDurationHours.Name || name == SettingMinBookingDurationHours.Name {
+		name == SettingMaxBookingDurationHours.Name || name == SettingMinBookingDurationHours.Name {
 		if !ValidateNumber(value, 0, 9999) {
 			return false
 		}

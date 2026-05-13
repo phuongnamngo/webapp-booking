@@ -1,5 +1,6 @@
 import "bootstrap/dist/css/bootstrap.min.css";
 import "@/styles/App.css";
+import "@/styles/Admin.css";
 import "@/styles/AdminNavBar.css";
 import "@/styles/NavBar.css";
 import "@/styles/CenterContent.css";
@@ -7,6 +8,7 @@ import "@/styles/Dashboard.css";
 import "@/styles/EditLocation.css";
 import "@/styles/ConfluenceHint.css";
 import "@/styles/Login.css";
+import "@/styles/Preferences.css";
 import "@/styles/Search.css";
 import "@/styles/Settings.css";
 import "@/styles/SideBar.css";

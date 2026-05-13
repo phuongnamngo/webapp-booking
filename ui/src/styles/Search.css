@@ -65,22 +65,31 @@
 }
 
 .container-search-config {
+  --search-neutral-1: #100c0c;
+  --search-neutral-2: #575757;
+  --search-neutral-3: #b7b9bb;
+  --search-neutral-4: #cfd5db;
+  --search-neutral-5: #ffffff;
+  --search-accent: #f32d19;
+
   position: fixed;
   top: auto;
   bottom: 0px;
   left: 0px;
   width: 100%;
   max-height: 350px;
-  padding: 20px;
-  padding-top: 0px;
-  border-radius: 10px;
-  border-bottom-left-radius: 0px;
-  border-bottom-right-radius: 0px;
-  box-shadow: 0px 0px 3px #555;
-  background-color: white;
-  opacity: 0.95;
+  padding: 0 20px 30px;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid var(--search-neutral-3);
+  border-bottom: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  background-color: var(--search-neutral-5);
+  opacity: 1;
   z-index: 100;
   transition: all 0.2s;
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--search-neutral-1);
 }
 
 .container-search-config .content-minimized {
@@ -94,8 +103,7 @@
 .container-search-config.minimized {
   width: 100%;
   height: 130px;
-  padding: 20px;
-  padding-top: 0px;
+  padding: 0 20px 20px;
   transition: all 0.2s;
 }
 
@@ -106,8 +114,8 @@
 .container-search-config .collapse-bar {
   display: flex;
   justify-content: center;
-  margin-top: 10px;
-  margin-bottom: 10px;
+  margin-top: 12px;
+  margin-bottom: 12px;
   text-align: right;
   cursor: pointer;
 }
@@ -211,12 +219,257 @@ form#filter-locations-form .row {
   position: relative;
 }
 
+.booking-timeline {
+  margin-top: 18px;
+  margin-bottom: 18px;
+}
+
+.booking-timeline-header,
+.booking-timeline-axis,
+.booking-timeline-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.booking-timeline-header {
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.booking-timeline-frame {
+  position: relative;
+  min-height: 34px;
+  overflow: hidden;
+  border: 1px solid #cfd5db;
+  border-radius: 6px;
+  background: #f8f9fa;
+}
+
+.booking-timeline-block {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 4px;
+  background: rgba(243, 45, 25, 0.75);
+}
+
+.booking-timeline-empty {
+  padding: 7px 10px;
+  color: #575757;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.booking-timeline-axis {
+  margin-top: 4px;
+  color: #575757;
+  font-size: 0.8rem;
+}
+
+.booking-timeline-row {
+  align-items: baseline;
+  margin-top: 6px;
+  font-size: 0.875rem;
+}
+
+.booking-timeline-time {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.booking-timeline-subject,
+.booking-timeline-user {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media only screen and (min-width: 440px) {
   .container-search-config {
     width: calc(100% - 20px);
-    max-width: 420px;
+    max-width: 440px;
     left: 10px;
   }
+}
+
+/* Panel form controls — LNT / Figma tokens */
+.container-search-config .form-select {
+  border-color: var(--search-neutral-4);
+  border-radius: 4px;
+  font-size: 16px;
+  color: var(--search-neutral-1);
+}
+
+.container-search-config .form-select:focus {
+  border-color: var(--search-accent);
+  box-shadow: 0 0 0 0.2rem rgba(243, 45, 25, 0.2);
+}
+
+.container-search-config .flatpickr-input {
+  border-color: var(--search-neutral-4);
+  border-radius: 4px;
+  color: var(--search-neutral-1);
+}
+
+.container-search-config .flatpickr-input:focus {
+  border-color: var(--search-accent);
+  box-shadow: 0 0 0 0.2rem rgba(243, 45, 25, 0.2);
+}
+
+.container-search-config .input-group .btn-outline-secondary {
+  border-color: var(--search-neutral-4);
+  color: var(--search-neutral-2);
+}
+
+.container-search-config .input-group .btn-outline-secondary:hover {
+  border-color: var(--search-neutral-3);
+  background-color: rgba(0, 0, 0, 0.03);
+  color: var(--search-neutral-1);
+}
+
+.container-search-config .btn-primary {
+  background-color: var(--search-accent);
+  border-color: var(--search-accent);
+}
+
+.container-search-config .btn-primary:hover,
+.container-search-config .btn-primary:focus {
+  background-color: #d92816;
+  border-color: #d92816;
+}
+
+.container-search-config .btn-light {
+  background-color: var(--search-neutral-5);
+  border-color: var(--search-neutral-4);
+  color: var(--search-neutral-1);
+}
+
+.container-search-config .btn-light:hover {
+  background-color: #f8f9fa;
+  border-color: var(--search-neutral-3);
+  color: var(--search-neutral-1);
+}
+
+.container-search-config .form-check-input:focus {
+  border-color: var(--search-accent);
+  box-shadow: 0 0 0 0.2rem rgba(243, 45, 25, 0.2);
+}
+
+.container-search-config .form-check-input:checked {
+  background-color: var(--search-accent);
+  border-color: var(--search-accent);
+}
+
+.container-search-config .form-check .form-check-label {
+  color: var(--search-neutral-1);
+}
+
+.container-search-config .search-panel-tool-btn {
+  padding: 4px 8px;
+}
+
+.search-panel-outline-btn {
+  padding: 4px 8px;
+  font-size: 16px;
+  color: var(--search-neutral-1);
+  border-color: var(--search-neutral-4) !important;
+}
+
+.search-panel-outline-btn:disabled {
+  opacity: 0.5;
+}
+
+/* Floor plan floating toolbars — Figma Frame 9 */
+:root {
+  --search-map-accent: #f32d19;
+  --search-map-border: #cfd5db;
+  --search-map-bg: #ffffff;
+}
+
+.search-map-floating-ui {
+  position: absolute;
+  z-index: 10;
+  border: 1px solid var(--search-map-border);
+  background: var(--search-map-bg);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.search-map-floating-ui--minimap {
+  top: 190px;
+  right: 10px;
+  padding: 4px;
+}
+
+.search-map-floating-ui--legend {
+  top: 70px;
+  right: 10px;
+  padding: 10px 12px;
+  color: #100c0c;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.search-map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.search-map-legend-item + .search-map-legend-item {
+  margin-top: 6px;
+}
+
+.search-map-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  flex: 0 0 12px;
+}
+
+.search-map-floating-ui--zoom {
+  top: 70px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+}
+
+.search-map-zoom-btn {
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--search-map-accent) !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: var(--search-map-accent) !important;
+  line-height: 1;
+}
+
+.search-map-zoom-btn svg {
+  color: inherit;
+}
+
+.search-map-zoom-btn:hover {
+  background-color: rgba(243, 45, 25, 0.08) !important;
+  border-color: var(--search-map-accent) !important;
+  color: var(--search-map-accent) !important;
+}
+
+.search-map-zoom-btn:focus-visible {
+  outline: 2px solid var(--search-map-accent);
+  outline-offset: 1px;
 }
 
 .active-transparent:active,

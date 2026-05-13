@@ -1,12 +1,176 @@
+/*
+ * Booking app top bar — aligned with LNT Seatbooking / Figma (Frame 3: logo + menus + user + language).
+ */
+
+.app-top-header {
+  --app-header-accent-start: rgb(243, 45, 25);
+  --app-header-accent-end: rgb(141, 26, 15);
+  --app-header-muted: #575757;
+  --app-header-inner-px: 20px;
+
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+  background-color: #ffffff !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  font-family:
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.app-top-header-inner.container-fluid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 12px;
+  padding-left: var(--app-header-inner-px);
+  padding-right: var(--app-header-inner-px);
+}
+
+@media (min-width: 992px) {
+  .app-top-header-inner.container-fluid {
+    flex-wrap: nowrap;
+  }
+
+  /* Space between logo and primary nav (~Figma 30px) */
+  .app-top-header-brand {
+    margin-right: 30px;
+  }
+
+  /* Collapse behaves as horizontal flex filler */
+  .app-top-header-collapse {
+    flex: 1 1 auto !important;
+  }
+}
+
+.navbar-brand.app-top-header-brand {
+  flex-shrink: 0;
+}
+
 .navbar-brand {
   padding-top: 0;
   padding-bottom: 0;
 }
 
-.navbar-brand > img {
-  height: 2rem;
+.app-top-header .navbar-brand > img {
+  height: 34px;
+  max-width: 64px;
+  width: auto;
+  object-fit: contain;
 }
 
-.navbar-nav .nav-link.active {
-  color: var(--bs-primary) !important;
+@media (max-width: 991.98px) {
+  .app-top-header-brand {
+    margin-right: auto;
+  }
+}
+
+.app-top-header-nav-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+@media (min-width: 992px) {
+  .app-top-header-nav-wrap {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    width: auto;
+    gap: 12px;
+  }
+}
+
+.app-top-header-primary-nav,
+.app-top-header-meta-nav {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (min-width: 992px) {
+  .app-top-header-primary-nav {
+    gap: 10px;
+  }
+
+  .app-top-header-meta-nav {
+    gap: 10px;
+    margin-left: auto !important;
+  }
+}
+
+.app-top-header-meta-icon {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.app-top-header .navbar-nav .nav-link:not(.dropdown-toggle):not(.app-top-header-user) {
+  padding: 6px !important;
+  color: var(--app-header-muted) !important;
+  border-radius: 0 !important;
+  font-weight: inherit;
+}
+
+.app-top-header .navbar-nav .nav-link:hover:not(.active) {
+  color: #383838 !important;
+}
+
+.app-top-header-user {
+  gap: 10px !important;
+  align-items: center !important;
+  color: var(--app-header-muted) !important;
+  padding: 6px !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.app-top-header .navbar-nav .nav-link.active {
+  border: none;
+  padding: 6px !important;
+  font-weight: inherit;
+  background: linear-gradient(
+    270deg,
+    var(--app-header-accent-start) 0%,
+    var(--app-header-accent-end) 100%
+  );
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-top-header .navbar-nav .nav-link.active {
+    color: var(--app-header-accent-start) !important;
+    -webkit-text-fill-color: currentColor;
+    background: transparent;
+  }
+}
+
+/* Language dropdown: match inline menu styling (neutral + caret) */
+
+.app-top-header-lang.dropdown > .dropdown-toggle.nav-link {
+  padding: 6px !important;
+  color: var(--app-header-muted) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px !important;
+  font-weight: inherit;
+}
+
+.app-top-header-lang.dropdown > .dropdown-toggle.nav-link::after {
+  margin-left: 0;
+}
+
+.app-top-header-lang .iconLanguage_nlXk {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.app-top-header .navbar-light .navbar-toggler {
+  border-color: rgb(207 213 219);
 }

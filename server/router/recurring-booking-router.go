@@ -11,6 +11,7 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/gorilla/mux"
 
+	. "github.com/seatsurfing/seatsurfing/server/api"
 	. "github.com/seatsurfing/seatsurfing/server/repository"
 	. "github.com/seatsurfing/seatsurfing/server/util"
 )
@@ -228,15 +229,12 @@ func (router *RecurringBookingRouter) create(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	e.UserID = GetRequestUserID(r)
-	if err := GetRecurringBookingRepository().Create(e); err != nil {
-		log.Println(err)
-		SendInternalServerError(w)
-		return
-	}
 	bookingRouter := &BookingRouter{}
 	spaceRequiresApproval := bookingRouter.getSpaceRequiresApproval(location.OrganizationID, space)
 	bookings := GetRecurringBookingRepository().CreateBookings(e)
-	res := make([]CreateRecurringBookingResponse, 0)
+	res := make([]*CreateRecurringBookingResponse, 0)
+	validBookings := make([]*Booking, 0)
+	validResponses := make([]*CreateRecurringBookingResponse, 0)
 	for _, b := range bookings {
 		bookingReq := &CreateBookingRequest{
 			SpaceID: b.SpaceID,
@@ -253,15 +251,7 @@ func (router *RecurringBookingRouter) create(w http.ResponseWriter, r *http.Requ
 				code = ResponseCodeBookingSlotConflict
 			}
 		}
-		if valid {
-			b.Approved = !spaceRequiresApproval
-			if err := GetBookingRepository().Create(b); err != nil {
-				log.Println(err)
-				SendInternalServerError(w)
-				return
-			}
-		}
-		item := CreateRecurringBookingResponse{
+		item := &CreateRecurringBookingResponse{
 			Enter:     b.Enter,
 			Leave:     b.Leave,
 			Success:   valid,
@@ -269,9 +259,30 @@ func (router *RecurringBookingRouter) create(w http.ResponseWriter, r *http.Requ
 			ID:        b.ID,
 		}
 		res = append(res, item)
+		if valid {
+			validBookings = append(validBookings, b)
+			validResponses = append(validResponses, item)
+		}
 	}
-	go router.onBookingCreated(e, bookings, spaceRequiresApproval)
-	w.Header().Set("X-Object-ID", e.ID)
+	if len(validBookings) > 0 {
+		if err := GetRecurringBookingRepository().Create(e); err != nil {
+			log.Println(err)
+			SendInternalServerError(w)
+			return
+		}
+		for idx, b := range validBookings {
+			b.RecurringID = NullUUID(e.ID)
+			b.Approved = !spaceRequiresApproval
+			if err := GetBookingRepository().Create(b); err != nil {
+				log.Println(err)
+				SendInternalServerError(w)
+				return
+			}
+			validResponses[idx].ID = b.ID
+		}
+		go router.onBookingCreated(e, validBookings, spaceRequiresApproval)
+		w.Header().Set("X-Object-ID", e.ID)
+	}
 	w.WriteHeader(http.StatusCreated)
 	SendJSON(w, res)
 }

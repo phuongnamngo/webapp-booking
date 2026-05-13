@@ -38,6 +38,7 @@ import Group from "@/types/Group";
 import Location from "@/types/Location";
 import Ajax from "@/util/Ajax";
 import Space from "@/types/Space";
+import SpaceType from "@/types/SpaceType";
 import Search, { SearchOptions, GroupSearchResult } from "@/types/Search";
 import FullLayout from "@/components/FullLayout";
 import Loading from "@/components/Loading";
@@ -59,6 +60,7 @@ interface SpaceState {
   rotation: number;
   requireSubject: boolean;
   enabled: boolean;
+  spaceTypeId: string;
   changed: boolean;
   attributes: Map<string, string>;
   enabledAttributes: string[];
@@ -88,6 +90,7 @@ interface State {
   changed: boolean;
   attributeValues: SpaceAttributeValue[];
   availableAttributes: SpaceAttribute[];
+  spaceTypes: SpaceType[];
   changedAttributeIds: string[];
   deletedAttributeIds: string[];
   showEditSpaceDetailsModal: boolean;
@@ -141,6 +144,7 @@ class EditLocation extends React.Component<Props, State> {
       changed: false,
       attributeValues: [],
       availableAttributes: [],
+      spaceTypes: [],
       changedAttributeIds: [],
       deletedAttributeIds: [],
       showEditSpaceDetailsModal: false,
@@ -199,27 +203,31 @@ class EditLocation extends React.Component<Props, State> {
             });
             return this.entity.getMap().then((mapData) => {
               this.mapData = mapData;
-              return SpaceAttribute.list().then((attributes) => {
-                return this.entity.getAttributes().then((attributeValues) => {
-                  this.setState({
-                    name: location.name,
-                    description: location.description,
-                    limitConcurrentBookings: location.maxConcurrentBookings > 0,
-                    maxConcurrentBookings: location.maxConcurrentBookings,
-                    timezone: location.timezone,
-                    enabled: location.enabled,
-                    mapScale: location.mapScale,
-                    mapScaleOnLoad: location.mapScale,
-                    attributeValues: attributeValues,
-                    availableAttributes: attributes,
-                    locationAllowBookers:
-                      location.allowedBookerGroupIds &&
-                      location.allowedBookerGroupIds
-                        ? this.groups.filter((g) =>
-                            location.allowedBookerGroupIds.includes(g.id),
-                          )
-                        : [],
-                    loading: false,
+              return SpaceType.list().then((spaceTypes) => {
+                return SpaceAttribute.list().then((attributes) => {
+                  return this.entity.getAttributes().then((attributeValues) => {
+                    this.setState({
+                      name: location.name,
+                      description: location.description,
+                      limitConcurrentBookings:
+                        location.maxConcurrentBookings > 0,
+                      maxConcurrentBookings: location.maxConcurrentBookings,
+                      timezone: location.timezone,
+                      enabled: location.enabled,
+                      mapScale: location.mapScale,
+                      mapScaleOnLoad: location.mapScale,
+                      attributeValues: attributeValues,
+                      availableAttributes: attributes,
+                      spaceTypes,
+                      locationAllowBookers:
+                        location.allowedBookerGroupIds &&
+                        location.allowedBookerGroupIds
+                          ? this.groups.filter((g) =>
+                              location.allowedBookerGroupIds.includes(g.id),
+                            )
+                          : [],
+                      loading: false,
+                    });
                   });
                 });
               });
@@ -270,6 +278,7 @@ class EditLocation extends React.Component<Props, State> {
         space.rotation = Math.round(item.rotation);
         space.requireSubject = item.requireSubject;
         space.enabled = item.enabled;
+        space.spaceTypeId = item.spaceTypeId;
         space.attributes = [];
         item.enabledAttributes.forEach((attributeId) => {
           let value = item.attributes.get(attributeId);
@@ -448,6 +457,7 @@ class EditLocation extends React.Component<Props, State> {
         ? e.requireSubject
         : RuntimeConfig.INFOS.subjectDefault === 3,
       enabled: e ? e.enabled : true,
+      spaceTypeId: e ? e.spaceTypeId : "",
       changed: true,
       attributes: new Map<string, string>(),
       enabledAttributes: [],
@@ -522,6 +532,15 @@ class EditLocation extends React.Component<Props, State> {
     const spaces = this.state.spaces;
     const space = { ...spaces[i] };
     space.enabled = checked;
+    space.changed = true;
+    spaces[i] = space;
+    this.setState({ spaces: spaces, changed: true });
+  };
+
+  setSpaceType = (i: number, spaceTypeId: string) => {
+    const spaces = this.state.spaces;
+    const space = { ...spaces[i] };
+    space.spaceTypeId = spaceTypeId;
     space.changed = true;
     spaces[i] = space;
     this.setState({ spaces: spaces, changed: true });
@@ -1007,6 +1026,28 @@ class EditLocation extends React.Component<Props, State> {
                     )
                   }
                 />
+              </Col>
+            </Form.Group>
+            <Form.Group as={Row}>
+              <Form.Label column sm="4" htmlFor="space-type">
+                {this.props.t("seatType")}
+              </Form.Label>
+              <Col sm="8">
+                <Form.Control
+                  as="select"
+                  id="space-type"
+                  value={this.getSelectedSpace()?.spaceTypeId || ""}
+                  onChange={(e: any) =>
+                    this.setSpaceType(this.state.selectedSpace!, e.target.value)
+                  }
+                >
+                  <option value="">{this.props.t("none")}</option>
+                  {this.state.spaceTypes.map((spaceType) => (
+                    <option key={spaceType.id} value={spaceType.id}>
+                      {spaceType.name}
+                    </option>
+                  ))}
+                </Form.Control>
               </Col>
             </Form.Group>
             <Form.Group as={Row}>

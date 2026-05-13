@@ -15,6 +15,7 @@ import Ajax from "@/util/Ajax";
 import Location from "@/types/Location";
 import RedirectUtil from "@/util/RedirectUtil";
 import RendererUtils from "@/util/RendererUtils";
+import AdminBooleanState from "@/components/AdminBooleanState";
 import Navigation from "@/util/Navigation";
 import CopyToClipboardButton from "@/components/CopyToClipboardButton";
 
@@ -71,12 +72,16 @@ class Locations extends React.Component<Props, State> {
         title={location.description}
       >
         <td>{location.name}</td>
-        <td>{RendererUtils.state(location.enabled)}</td>
+        <td>
+          <AdminBooleanState value={location.enabled} />
+        </td>
         <td>
           {location.mapWidth}&nbsp;&times;&nbsp;{location.mapHeight}
         </td>
         <td>
-          {RendererUtils.state(location.allowedBookerGroupIds?.length > 0)}
+          <AdminBooleanState
+            value={location.allowedBookerGroupIds?.length > 0}
+          />
         </td>
         <td>
           <a href={bookingLinkUrl} target="_blank" rel="noopener noreferrer">

@@ -15,6 +15,7 @@ interface State {
 interface Props {
   t: TranslationFunc;
   hidden?: boolean | undefined;
+  className?: string;
 }
 
 class TotpSettings extends React.Component<Props, State> {
@@ -57,7 +58,10 @@ class TotpSettings extends React.Component<Props, State> {
 
   render() {
     return (
-      <div hidden={this.props.hidden}>
+      <div
+        hidden={this.props.hidden}
+        className={this.props.className}
+      >
         <TotpSetupModal
           show={this.state.showTotpSetup}
           qrCode={this.state.qrCode}
@@ -66,23 +70,26 @@ class TotpSettings extends React.Component<Props, State> {
           onSuccess={this.onTotpSuccess}
           canClose={true}
         />
-        <h5 className="mt-5">{this.props.t("totp")}</h5>
+        <h3 className="preferences-section-title">{this.props.t("totp")}</h3>
         <p>{this.props.t("totpHint")}</p>
-        <Button
-          variant="primary"
-          onClick={() => this.setupTotp()}
-          hidden={this.state.totpEnabled}
-        >
-          {this.props.t("enableTotp")}
-        </Button>
-        <Button
-          variant="danger"
-          onClick={() => this.disableTotp()}
-          hidden={!this.state.totpEnabled}
-          disabled={RuntimeConfig.INFOS.enforceTOTP}
-        >
-          {this.props.t("disableTotp")}
-        </Button>
+        <div className="preferences-btn-row">
+          <Button
+            className="preferences-btn-save"
+            variant="primary"
+            onClick={() => this.setupTotp()}
+            hidden={this.state.totpEnabled}
+          >
+            {this.props.t("enableTotp")}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => this.disableTotp()}
+            hidden={!this.state.totpEnabled}
+            disabled={RuntimeConfig.INFOS.enforceTOTP}
+          >
+            {this.props.t("disableTotp")}
+          </Button>
+        </div>
       </div>
     );
   }

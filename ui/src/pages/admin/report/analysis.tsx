@@ -18,6 +18,7 @@ import RedirectUtil from "@/util/RedirectUtil";
 import AjaxError from "@/util/AjaxError";
 import ErrorText from "@/types/ErrorText";
 import DateTimePicker from "@/components/DateTimePicker";
+import AdminBooleanState from "@/components/AdminBooleanState";
 
 interface State {
   loading: boolean;
@@ -94,10 +95,10 @@ class ReportAnalysis extends React.Component<Props, State> {
     return this.data.users.map((user: any, i: number) => {
       let j = 0;
       let cols = this.data.presences[i].map((num: number) => {
-        let val = num > 0 ? <IconCheck className="feather" /> : "-";
+        let val = num > 0 ? <AdminBooleanState value={true} /> : "-";
         j++;
         return (
-          <td key={"row-" + user.userId + "-" + j} className="center">
+          <td key={"row-" + user.userId + "-" + j} className="start">
             {val}
           </td>
         );

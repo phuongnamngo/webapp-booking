@@ -11,6 +11,7 @@ import {
   Clipboard as IconClipboard,
   Icon,
   Clock as IconApproval,
+  Tag as IconTag,
 } from "react-feather";
 import { Badge, Nav } from "react-bootstrap";
 import { NextRouter } from "next/router";
@@ -96,6 +97,7 @@ class SideBar extends React.Component<Props, State> {
       "/admin/groups",
       "/admin/settings",
       "/admin/locations",
+      "/admin/seat-types",
       "/admin/bookings",
       "/admin/approvals",
       ...RuntimeConfig.INFOS.pluginMenuItems.map((item) => {
@@ -143,7 +145,7 @@ class SideBar extends React.Component<Props, State> {
               icon={IconBox}
               title={this.props.t("organizations")}
             />
-            <span className="d-none d-md-inline">
+            <span className="d-none d-md-inline sidebar-nav-text">
               {" "}
               {this.props.t("organizations")}
             </span>
@@ -161,7 +163,7 @@ class SideBar extends React.Component<Props, State> {
                 icon={IconUsers}
                 title={this.props.t("users")}
               />
-              <span className="d-none d-md-inline">
+              <span className="d-none d-md-inline sidebar-nav-text">
                 {" "}
                 {this.props.t("users")}
               </span>
@@ -181,7 +183,7 @@ class SideBar extends React.Component<Props, State> {
                 icon={IconGroups}
                 title={this.props.t("groups")}
               />
-              <span className="d-none d-md-inline">
+              <span className="d-none d-md-inline sidebar-nav-text">
                 {" "}
                 {this.props.t("groups")}
               </span>
@@ -198,7 +200,7 @@ class SideBar extends React.Component<Props, State> {
                 icon={IconSettings}
                 title={this.props.t("settings")}
               />
-              <span className="d-none d-md-inline">
+              <span className="d-none d-md-inline sidebar-nav-text">
                 {" "}
                 {this.props.t("settings")}
               </span>
@@ -225,7 +227,10 @@ class SideBar extends React.Component<Props, State> {
                   href={"/admin/plugin/" + item.id}
                 >
                   <this.SidebarIcon icon={PluginIcon} title={item.title} />
-                  <span className="d-none d-md-inline"> {item.title}</span>
+                  <span className="d-none d-md-inline sidebar-nav-text">
+                    {" "}
+                    {item.title}
+                  </span>
                 </Nav.Link>
               </li>
             );
@@ -239,6 +244,26 @@ class SideBar extends React.Component<Props, State> {
         className="col-1 col-md-3 col-lg-2 d-md-block bg-light sidebar"
         activeKey={this.getActiveKey()}
       >
+        <svg
+          className="sidebar-gradient-svg-defs"
+          width="0"
+          height="0"
+          aria-hidden={true}
+          focusable="false"
+        >
+          <defs>
+            <linearGradient
+              id="sidebar-accent-gradient"
+              x1="100%"
+              y1="0%"
+              x2="0%"
+              y2="0%"
+            >
+              <stop offset="0%" />
+              <stop offset="100%" />
+            </linearGradient>
+          </defs>
+        </svg>
         <div className="sidebar-sticky pt-3">
           <ul className="nav flex-column">
             <li className="nav-item">
@@ -251,7 +276,7 @@ class SideBar extends React.Component<Props, State> {
                   icon={IconClipboard}
                   title={this.props.t("dashboard")}
                 />
-                <span className="d-none d-md-inline">
+                <span className="d-none d-md-inline sidebar-nav-text">
                   {" "}
                   {this.props.t("dashboard")}
                 </span>
@@ -267,9 +292,25 @@ class SideBar extends React.Component<Props, State> {
                   icon={IconMap}
                   title={this.props.t("areas")}
                 />
-                <span className="d-none d-md-inline">
+                <span className="d-none d-md-inline sidebar-nav-text">
                   {" "}
                   {this.props.t("areas")}
+                </span>
+              </Nav.Link>
+            </li>
+            <li className="nav-item">
+              <Nav.Link
+                as={Link}
+                eventKey="/admin/seat-types"
+                href="/admin/seat-types"
+              >
+                <this.SidebarIcon
+                  icon={IconTag}
+                  title={this.props.t("seatTypes")}
+                />
+                <span className="d-none d-md-inline sidebar-nav-text">
+                  {" "}
+                  {this.props.t("seatTypes")}
                 </span>
               </Nav.Link>
             </li>
@@ -283,7 +324,7 @@ class SideBar extends React.Component<Props, State> {
                   icon={IconBook}
                   title={this.props.t("bookings")}
                 />
-                <span className="d-none d-md-inline">
+                <span className="d-none d-md-inline sidebar-nav-text">
                   {" "}
                   {this.props.t("bookings")}
                 </span>
@@ -304,8 +345,10 @@ class SideBar extends React.Component<Props, State> {
                   title={this.props.t("approvals")}
                 />
                 <span className="d-none d-md-inline position-relative">
-                  {" "}
-                  {this.props.t("approvals")}
+                  <span className="sidebar-nav-text">
+                    {" "}
+                    {this.props.t("approvals")}
+                  </span>
                   <Badge
                     bg="primary"
                     hidden={this.state.approvalCount === 0}
@@ -330,7 +373,7 @@ class SideBar extends React.Component<Props, State> {
                   icon={IconAnalysis}
                   title={this.props.t("analysis")}
                 />
-                <span className="d-none d-md-inline">
+                <span className="d-none d-md-inline sidebar-nav-text">
                   {" "}
                   {this.props.t("analysis")}
                 </span>
@@ -359,7 +402,10 @@ class SideBar extends React.Component<Props, State> {
                     href={"/admin/plugin/" + item.id}
                   >
                     <this.SidebarIcon icon={PluginIcon} title={item.title} />
-                    <span className="d-none d-md-inline"> {item.title}</span>
+                    <span className="d-none d-md-inline sidebar-nav-text">
+                      {" "}
+                      {item.title}
+                    </span>
                   </Nav.Link>
                 </li>
               );
@@ -372,7 +418,7 @@ class SideBar extends React.Component<Props, State> {
                   icon={IconHome}
                   title={this.props.t("bookingui")}
                 />
-                <span className="d-none d-md-inline">
+                <span className="d-none d-md-inline sidebar-nav-text">
                   {" "}
                   {this.props.t("bookingui")}
                 </span>

@@ -47,6 +47,10 @@ var (
 	ResponseCodeBookingNotAllowedBooker          = 1009
 	ResponseCodeBookingSubjectRequired           = 1010
 	ResponseCodeBookingInPast                    = 1011
+	ResponseCodeBookingInvalidSeatTypeRule       = 1012
+	ResponseCodeOfficeSettingsMissing            = 1013
+	ResponseCodeBookingOutsideOfficeHours        = 1014
+	ResponseCodeBookingAlreadyStarted            = 1015
 
 	ResponseCodePresenceReportDateRangeTooLong = 2001
 

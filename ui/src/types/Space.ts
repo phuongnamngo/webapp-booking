@@ -6,6 +6,27 @@ import BulkUpdateResponse from "./BulkUpdateResponse";
 import SpaceAttributeValue from "./SpaceAttributeValue";
 import SearchAttribute from "./SearchAttribute";
 import Group from "./Group";
+import SpaceType from "./SpaceType";
+
+export interface SpaceDayStatusBooking {
+  id: string;
+  recurringId: string;
+  userId: string;
+  userEmail: string;
+  enter: string;
+  leave: string;
+  subject: string;
+}
+
+export interface SpaceDayStatus {
+  spaceId: string;
+  status: "available" | "partially_booked" | "full";
+  officeStart: string;
+  officeEnd: string;
+  bookedMinutes: number;
+  officeMinutes: number;
+  bookings: SpaceDayStatusBooking[];
+}
 
 export default class Space extends Entity {
   name: string;
@@ -22,6 +43,8 @@ export default class Space extends Entity {
   available: boolean;
   locationId: string;
   location: Location;
+  spaceTypeId: string;
+  spaceType: SpaceType | null;
   rawBookings: any[];
   allowed: boolean;
   approvalRequired: boolean;
@@ -42,6 +65,8 @@ export default class Space extends Entity {
     this.available = false;
     this.locationId = "";
     this.location = new Location();
+    this.spaceTypeId = "";
+    this.spaceType = null;
     this.rawBookings = [];
     this.allowed = true;
     this.approvalRequired = false;
@@ -57,6 +82,7 @@ export default class Space extends Entity {
       rotation: this.rotation,
       requireSubject: this.requireSubject,
       enabled: this.enabled,
+      spaceTypeId: this.spaceTypeId,
       attributes: this.attributes.map((a) => a.serialize()),
       approverGroupIds: this.approverGroupIds,
       allowedBookerGroupIds: this.allowedBookerGroupIds,
@@ -74,6 +100,12 @@ export default class Space extends Entity {
     this.rotation = input.rotation;
     this.requireSubject = input.requireSubject;
     this.enabled = input.enabled;
+    this.spaceTypeId = input.spaceTypeId || "";
+    this.spaceType = null;
+    if (input.spaceType) {
+      this.spaceType = new SpaceType();
+      this.spaceType.deserialize(input.spaceType);
+    }
     if (input.allowed !== undefined) {
       this.allowed = input.allowed;
     }
@@ -224,6 +256,22 @@ export default class Space extends Entity {
       });
       return list;
     });
+  }
+
+  static async listDayStatus(
+    locationId: string,
+    date: Date | string,
+  ): Promise<SpaceDayStatus[]> {
+    const selectedDate =
+      typeof date === "string"
+        ? date
+        : DateUtil.formatToDateTimeString(date).split("T")[0];
+    return Ajax.get(
+      "/location/" +
+        locationId +
+        "/space/day-status?date=" +
+        encodeURIComponent(selectedDate),
+    ).then((result) => result.json as SpaceDayStatus[]);
   }
 
   static async bulkUpdate(

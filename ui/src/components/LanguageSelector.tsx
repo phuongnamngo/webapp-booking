@@ -8,6 +8,8 @@ interface State {}
 
 interface Props {
   inNavbar?: boolean;
+  /** Extra classes when rendered in navbar (see NavBar.css) */
+  className?: string;
   t: TranslationFunc;
 }
 
@@ -37,6 +39,8 @@ class LanguageSelector extends React.Component<Props, State> {
               {RuntimeConfig.getLanguage()}
             </>
           }
+          className={[this.props.className, "app-top-header-lang"].filter(Boolean).join(" ")}
+          align="end"
         >
           {RuntimeConfig.getAvailableLanguages()
             .sort()

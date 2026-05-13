@@ -7,7 +7,6 @@ import {
   Form,
   Badge,
   Container,
-  NavLink,
 } from "react-bootstrap";
 import RuntimeConfig from "./RuntimeConfig";
 import {
@@ -140,7 +139,6 @@ class NavBar extends React.Component<Props, State> {
     let adminButton = <></>;
     let initMergeButton = <></>;
     let mergeRequestsButton = <></>;
-    let collapsable = <></>;
     let buddies = <></>;
 
     if (!RuntimeConfig.EMBEDDED) {
@@ -190,51 +188,68 @@ class NavBar extends React.Component<Props, State> {
       );
     }
 
-    collapsable = (
-      <>
-        <Nav activeKey={this.props.router.pathname}>
-          <Nav.Link as={Link} eventKey="/search" href="/search">
-            {RuntimeConfig.EMBEDDED ? (
-              <IconPlus className="feather feather-lg" />
-            ) : (
-              this.props.t("bookSeat")
-            )}
-          </Nav.Link>
-          <Nav.Link as={Link} eventKey="/bookings" href="/bookings">
-            {RuntimeConfig.EMBEDDED ? (
-              <IconCalendar className="feather feather-lg" />
-            ) : (
-              this.props.t("myBookings")
-            )}
-          </Nav.Link>
-          {buddies}
-          <Nav.Link as={Link} eventKey="/preferences" href="/preferences">
-            {RuntimeConfig.EMBEDDED ? (
-              <IconSettings className="feather feather-lg" />
-            ) : (
-              this.props.t("preferences")
-            )}
-          </Nav.Link>
-          {adminButton}
-          {signOffButton}
-        </Nav>
-        <Nav className="ms-auto">
-          {initMergeButton}
-          {mergeRequestsButton}
-          <Nav.Link as="span" className="icon-link d-none d-xl-flex pe-none">
-            <IconUser className="feather feather-lg" />
-            {RuntimeConfig.INFOS.username}
-          </Nav.Link>
-          <LanguageSelector inNavbar={true} />
-        </Nav>
-      </>
+    const navMain = (
+      <Nav
+        activeKey={this.props.router.pathname}
+        className="app-top-header-primary-nav"
+      >
+        <Nav.Link as={Link} eventKey="/search" href="/search">
+          {RuntimeConfig.EMBEDDED ? (
+            <IconPlus className="feather feather-lg" />
+          ) : (
+            this.props.t("bookSeat")
+          )}
+        </Nav.Link>
+        <Nav.Link as={Link} eventKey="/bookings" href="/bookings">
+          {RuntimeConfig.EMBEDDED ? (
+            <IconCalendar className="feather feather-lg" />
+          ) : (
+            this.props.t("myBookings")
+          )}
+        </Nav.Link>
+        {buddies}
+        <Nav.Link as={Link} eventKey="/preferences" href="/preferences">
+          {RuntimeConfig.EMBEDDED ? (
+            <IconSettings className="feather feather-lg" />
+          ) : (
+            this.props.t("preferences")
+          )}
+        </Nav.Link>
+        {adminButton}
+        {signOffButton}
+      </Nav>
     );
 
+    const navMeta = (
+      <Nav className="app-top-header-meta-nav">
+        {initMergeButton}
+        {mergeRequestsButton}
+        <Nav.Link
+          as="span"
+          className="app-top-header-user icon-link d-none d-xl-flex pe-none"
+        >
+          <IconUser className="feather feather-lg app-top-header-meta-icon" />
+          {RuntimeConfig.INFOS.username}
+        </Nav.Link>
+        <LanguageSelector inNavbar={true} />
+      </Nav>
+    );
+
+    const navContent = (
+      <div className="app-top-header-nav-wrap">
+        {navMain}
+        {navMeta}
+      </div>
+    );
+
+    let collapsable: React.ReactNode = navContent;
     if (!RuntimeConfig.EMBEDDED) {
       collapsable = (
         <>
           <Navbar.Toggle aria-controls="basic-navbar-nav" />
-          <Navbar.Collapse id="basic-navbar-nav">{collapsable}</Navbar.Collapse>
+          <Navbar.Collapse id="basic-navbar-nav" className="app-top-header-collapse">
+            {navContent}
+          </Navbar.Collapse>
         </>
       );
     }
@@ -244,13 +259,14 @@ class NavBar extends React.Component<Props, State> {
     return (
       <>
         <Navbar
-          bg="light"
+          bg="white"
           variant="light"
           fixed="top"
           expand={RuntimeConfig.EMBEDDED ? true : "lg"}
+          className="app-top-header"
         >
-          <Container fluid={true}>
-            <Navbar.Brand as={NavLink} to="/search">
+          <Container fluid className="app-top-header-inner gx-0">
+            <Navbar.Brand as={Link} href="/search" className="app-top-header-brand">
               <img src={logoUrl} alt="iDeskBooking" />
             </Navbar.Brand>
             {collapsable}

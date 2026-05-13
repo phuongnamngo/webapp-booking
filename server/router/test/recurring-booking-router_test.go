@@ -35,7 +35,7 @@ func TestRecurringBookingsPrecheckFeatureDisabled(t *testing.T) {
 	"subject": "Test",
 	"enter": "2030-08-28T09:00:00+02:00",
 	"leave": "2030-08-28T15:00:00+02:00",
-	"end": "2030-09-03T00:00:00+02:00",
+	"end": "2030-09-03T00:00:00Z",
 	"cadence": 1,
 	"cycle": 1
 	}`
@@ -132,6 +132,169 @@ func TestRecurringBookingsPrecheck(t *testing.T) {
 	CheckTestBool(t, true, resBody[3].Success)  // 31
 	CheckTestBool(t, false, resBody[4].Success) // 01
 	CheckTestBool(t, true, resBody[5].Success)  // 02
+}
+
+func TestRecurringBookingFixedSlotSpaceTypeRejectsNonMatchingSlot(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingFeatureRecurringBookings.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, strconv.Itoa(365*10))
+	GetSettingsRepository().Set(org.ID, SettingMaxBookingsPerUser.Name, "1000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFixedSlots, 0, []*SpaceTypeSlot{
+		{Label: "Morning", StartTime: "08:00", EndTime: "12:00", Enabled: true, SortOrder: 1},
+	})
+
+	payload := `{
+	"spaceId": "` + space.ID + `",
+	"subject": "Test",
+	"enter": "2030-09-01T08:30:00Z",
+	"leave": "2030-09-01T12:00:00Z",
+	"end": "2030-09-02T00:00:00Z",
+	"cadence": 1,
+	"cycle": 1
+	}`
+	req := NewHTTPRequest("POST", "/recurring-booking/precheck", user.ID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []CreateRecurringBookingResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, len(resBody))
+	CheckTestBool(t, false, resBody[0].Success)
+	CheckTestInt(t, 1012, resBody[0].ErrorCode)
+}
+
+func TestRecurringBookingOutsideOfficeHoursRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingFeatureRecurringBookings.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, strconv.Itoa(365*10))
+	GetSettingsRepository().Set(org.ID, SettingMaxBookingsPerUser.Name, "1000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 30, nil)
+
+	payload := `{
+	"spaceId": "` + space.ID + `",
+	"subject": "Test",
+	"enter": "2030-09-01T07:30:00+02:00",
+	"leave": "2030-09-01T08:30:00+02:00",
+	"end": "2030-09-02T00:00:00+02:00",
+	"cadence": 1,
+	"cycle": 1
+	}`
+	req := NewHTTPRequest("POST", "/recurring-booking/precheck", user.ID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []CreateRecurringBookingResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, len(resBody))
+	CheckTestBool(t, false, resBody[0].Success)
+	CheckTestInt(t, 1014, resBody[0].ErrorCode)
+}
+
+func TestRecurringBookingCreateOutsideOfficeHoursRejected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingFeatureRecurringBookings.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, strconv.Itoa(365*10))
+	GetSettingsRepository().Set(org.ID, SettingMaxBookingsPerUser.Name, "1000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+	_, space := createBookingTestSpaceWithType(t, org, SpaceTypeBookingModeFlexibleTime, 30, nil)
+
+	payload := `{
+	"spaceId": "` + space.ID + `",
+	"subject": "Test",
+	"enter": "2030-09-01T07:30:00+02:00",
+	"leave": "2030-09-01T08:30:00+02:00",
+	"end": "2030-09-02T00:00:00+02:00",
+	"cadence": 1,
+	"cycle": 1
+	}`
+	req := NewHTTPRequest("POST", "/recurring-booking/", user.ID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+	CheckTestString(t, "", res.Header().Get("X-Object-ID"))
+	var resBody []CreateRecurringBookingResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, len(resBody))
+	CheckTestBool(t, false, resBody[0].Success)
+	CheckTestInt(t, 1014, resBody[0].ErrorCode)
+}
+
+func TestRecurringBookingWithoutSpaceTypeUsesLegacyTimeRangeFlow(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingFeatureRecurringBookings.Name, "1")
+	GetSettingsRepository().Set(org.ID, SettingMaxDaysInAdvance.Name, strconv.Itoa(365*10))
+	GetSettingsRepository().Set(org.ID, SettingMaxBookingsPerUser.Name, "1000")
+	createBookingTestOfficeSettings(t, "08:00", "17:00")
+	user := CreateTestUserInOrg(org)
+
+	location := &Location{Name: "Location 1", OrganizationID: org.ID, Enabled: true}
+	CheckTestBool(t, true, GetLocationRepository().Create(location) == nil)
+	space := &Space{Name: "No type", LocationID: location.ID, Enabled: true}
+	CheckTestBool(t, true, GetSpaceRepository().Create(space) == nil)
+
+	validPayload := `{
+	"spaceId": "` + space.ID + `",
+	"subject": "Valid",
+	"enter": "2030-09-02T09:00:00Z",
+	"leave": "2030-09-02T10:00:00Z",
+	"end": "2030-09-03T00:00:00+02:00",
+	"cadence": 1,
+	"cycle": 1
+	}`
+	req := NewHTTPRequest("POST", "/recurring-booking/precheck", user.ID, bytes.NewBufferString(validPayload))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var validBody []CreateRecurringBookingResponse
+	json.Unmarshal(res.Body.Bytes(), &validBody)
+	CheckTestInt(t, 1, len(validBody))
+	CheckTestBool(t, true, validBody[0].Success)
+
+	bookingPayload := "{\"spaceId\": \"" + space.ID + "\", \"enter\": \"2030-09-01T09:00:00Z\", \"leave\": \"2030-09-01T10:00:00Z\"}"
+	req = NewHTTPRequest("POST", "/booking/", user.ID, bytes.NewBufferString(bookingPayload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusCreated, res.Code)
+
+	overlapPayload := `{
+	"spaceId": "` + space.ID + `",
+	"subject": "Overlap",
+	"enter": "2030-09-01T09:30:00Z",
+	"leave": "2030-09-01T10:30:00Z",
+	"end": "2030-09-02T00:00:00+02:00",
+	"cadence": 1,
+	"cycle": 1
+	}`
+	req = NewHTTPRequest("POST", "/recurring-booking/precheck", user.ID, bytes.NewBufferString(overlapPayload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var overlapBody []CreateRecurringBookingResponse
+	json.Unmarshal(res.Body.Bytes(), &overlapBody)
+	CheckTestInt(t, 1, len(overlapBody))
+	CheckTestBool(t, false, overlapBody[0].Success)
+	CheckTestInt(t, 1001, overlapBody[0].ErrorCode)
+
+	outsideOfficePayload := `{
+	"spaceId": "` + space.ID + `",
+	"subject": "Outside",
+	"enter": "2030-09-03T07:30:00Z",
+	"leave": "2030-09-03T08:30:00Z",
+	"end": "2030-09-04T00:00:00Z",
+	"cadence": 1,
+	"cycle": 1
+	}`
+	req = NewHTTPRequest("POST", "/recurring-booking/precheck", user.ID, bytes.NewBufferString(outsideOfficePayload))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var outsideOfficeBody []CreateRecurringBookingResponse
+	json.Unmarshal(res.Body.Bytes(), &outsideOfficeBody)
+	CheckTestInt(t, 1, len(outsideOfficeBody))
+	CheckTestBool(t, false, outsideOfficeBody[0].Success)
+	CheckTestInt(t, 1014, outsideOfficeBody[0].ErrorCode)
 }
 
 func TestRecurringBookingsCreateDelete(t *testing.T) {

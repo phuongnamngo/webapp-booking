@@ -87,7 +87,7 @@ class AdminNavBar extends React.Component<Props, State> {
         </Form>
         <ul className="navbar-nav px-3">
           <li className="nav-item text-nowrap">
-            <Button variant="link" className="nav-link" onClick={this.logout}>
+            <Button variant="link" className="nav-link admin-navbar-logout" onClick={this.logout}>
               {" "}
               {this.props.t("logout")}
             </Button>

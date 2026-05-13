@@ -1,0 +1,524 @@
+/* LNT Seatbooking — Preferences inner content (Figma: Bookings / Style / Security / Integrations) */
+
+.container-center-top.preferences-layout {
+  background-color: #e9ecef;
+}
+
+.preferences-shell {
+  width: 100%;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 15px;
+}
+
+/*
+ * Figma Frame 44 + Menu (9:1066): row of tabs; each tab = column, align center, gap 3px;
+ * label frame padding 6px 12px; Rectangle 4 = 3px height, full width of tab (hug content).
+ */
+.preferences-subnav-bar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  align-self: stretch;
+  width: 100%;
+  gap: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.preferences-subnav-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.preferences-subnav-tab:focus-visible {
+  outline: 2px solid #1076eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.preferences-subnav-tab-label {
+  padding: 6px 12px;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 400;
+  color: #575757;
+}
+
+.preferences-subnav-tab:hover .preferences-subnav-tab-label {
+  color: #100c0c;
+}
+
+/* Inactive: Figma Rectangle 4 fill Neutral/5 (#FFFFFF) */
+.preferences-subnav-tab-line {
+  display: block;
+  align-self: stretch;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.preferences-subnav-tab-active .preferences-subnav-tab-label {
+  color: transparent;
+  background: linear-gradient(270deg, #f32d19 0%, #8d1a0f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.preferences-subnav-tab-active .preferences-subnav-tab-line {
+  background: linear-gradient(270deg, #f32d19 0%, #8d1a0f 100%);
+}
+
+.preferences-panel {
+  background: #ffffff;
+  border-radius: 0;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  box-sizing: border-box;
+}
+
+.preferences-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: stretch;
+}
+
+.preferences-field > .form-label,
+.preferences-field-label {
+  font-size: 18px;
+  line-height: 24px;
+  color: #575757;
+  margin-bottom: 0;
+  font-weight: 400;
+}
+
+.preferences-form-control,
+.preferences-panel .form-select,
+.preferences-panel .form-control {
+  min-height: 48px;
+  border: 1px solid #cfd5db;
+  border-radius: 6px;
+  padding: 1px 12px 1px 15px;
+  font-size: 18px;
+  line-height: 24px;
+  color: #100c0c;
+  background-color: #ffffff;
+}
+
+.preferences-panel .form-control:disabled {
+  background-color: #f6f6f6;
+  color: #575757;
+}
+
+.preferences-panel .form-control[type="password"],
+.preferences-panel .form-control[type="text"],
+.preferences-panel .form-control[type="url"],
+.preferences-panel .form-control[type="number"] {
+  background-color: #ffffff;
+}
+
+.preferences-panel .form-control[type="number"] {
+  max-width: none;
+}
+
+.preferences-working-hours-row .form-control[type="number"] {
+  background-color: #ffffff;
+}
+
+.preferences-working-hours-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 30px;
+  align-self: stretch;
+}
+
+.preferences-working-hours-row .preferences-hour-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.preferences-working-hours-sep {
+  flex: 0 0 auto;
+  font-size: 18px;
+  line-height: 24px;
+  color: #100c0c;
+  margin: 0;
+  font-weight: 400;
+}
+
+.preferences-workdays-block {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-self: stretch;
+}
+
+.preferences-workdays-row {
+  display:grid;
+  gap: 10px;
+  align-items: center;
+}
+
+.preferences-workday-pill {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+  font-size: 18px;
+  line-height: 24px;
+  color: #100c0c;
+}
+
+.preferences-workday-pill input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.preferences-workday-box {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid #e0e0e0;
+  background: #ffffff;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.preferences-workday-pill input:focus-visible + .preferences-workday-box {
+  outline: 2px solid #1076eb;
+  outline-offset: 2px;
+}
+
+.preferences-workday-pill input:checked + .preferences-workday-box {
+  background: #1076eb;
+  border-color: #1076eb;
+}
+
+.preferences-workday-check {
+  width: 11px;
+  height: 7px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+  opacity: 0;
+}
+
+.preferences-workday-pill input:checked + .preferences-workday-box .preferences-workday-check {
+  opacity: 1;
+}
+
+.preferences-inline-check {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 24px;
+  color: #100c0c;
+}
+
+.preferences-inline-check input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.preferences-inline-check .preferences-workday-box {
+  border-width: 1px;
+}
+
+.preferences-section-title {
+  font-size: 22px;
+  line-height: 32px;
+  font-weight: 400;
+  color: #100c0c;
+  margin: 0;
+}
+
+.preferences-color-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-self: stretch;
+}
+
+.preferences-color-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+}
+
+.preferences-color-swatches {
+  display: block;
+  width: 52px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid #cfd5db;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px!important;
+}
+
+.preferences-color-swatches input[type="color"] {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  border-radius: 4px;
+  min-height: 0;
+}
+
+.preferences-color-swatches input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.preferences-color-swatches input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.preferences-color-label {
+  font-size: 18px;
+  line-height: 24px;
+  color: #100c0c;
+  margin: 0;
+}
+
+.preferences-btn-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.preferences-btn-neutral {
+  border: none;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 18px;
+  line-height: 22px;
+  background: #100c0c !important;
+  color: #ffffff !important;
+}
+
+.preferences-btn-neutral:hover,
+.preferences-btn-neutral:focus {
+  background: #2a2424 !important;
+  color: #ffffff !important;
+}
+
+.preferences-btn-neutral:disabled {
+  opacity: 0.5;
+}
+
+.preferences-btn-save.btn,
+.preferences-btn-save {
+  border: none;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 18px;
+  line-height: 22px;
+  background: linear-gradient(270deg, #f32d19 0%, #8d1a0f 100%) !important;
+  color: #ffffff !important;
+}
+
+.preferences-btn-save:hover,
+.preferences-btn-save:focus {
+  color: #ffffff !important;
+  filter: brightness(1.05);
+}
+
+.preferences-btn-save:disabled {
+  opacity: 0.55;
+  filter: none;
+}
+
+.preferences-security-block {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-self: stretch;
+}
+
+.preferences-security-block .preferences-section-title {
+  margin: 0;
+}
+
+.preferences-security-block > p {
+  font-size: 16px;
+  line-height: 22px;
+  color: #575757;
+  margin: 0;
+}
+
+.preferences-security-block + .preferences-security-block {
+  padding-top: 0;
+  border-top: none;
+}
+
+.preferences-passkey-group {
+  align-self: stretch;
+}
+
+.preferences-passkey-group .input-group {
+  border: 1px solid #cfd5db;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+  max-width: 100%;
+}
+
+.preferences-passkey-group .form-control {
+  border: none;
+  border-radius: 0;
+  min-height: 48px;
+  background: #ffffff;
+}
+
+.preferences-passkey-group .input-group .btn {
+  border: none;
+  border-radius: 0 6px 6px 0;
+  padding: 12px 14px;
+  font-size: 18px;
+  line-height: 22px;
+  background: linear-gradient(270deg, #f32d19 0%, #8d1a0f 100%) !important;
+  color: #ffffff !important;
+}
+
+.preferences-passkey-group .input-group .btn:disabled {
+  opacity: 0.55;
+}
+
+.preferences-sessions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-self: stretch;
+}
+
+.preferences-sessions-head {
+  font-size: 22px;
+  line-height: 32px;
+  font-weight: 400;
+  color: #100c0c;
+  margin: 0;
+}
+
+.preferences-sessions-list {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.preferences-sessions-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 20px;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f5f5f5;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  color: #100c0c;
+}
+
+.preferences-sessions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 20px;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f5f5f5;
+  font-size: 18px;
+  line-height: 24px;
+  color: #100c0c;
+}
+
+.preferences-sessions-divider {
+  height: 1px;
+  background: #e0e0e0;
+  width: 100%;
+}
+
+.preferences-link-logout {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 18px;
+  line-height: 24px;
+  text-decoration: underline;
+  cursor: pointer;
+  background: linear-gradient(270deg, #f32d19 0%, #8d1a0f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-align: left;
+}
+
+.preferences-link-logout:hover {
+  filter: brightness(1.1);
+}
+
+.preferences-footnote {
+  font-size: 16px;
+  line-height: 22px;
+  color: #575757;
+  margin: 0;
+}
+
+.preferences-panel .list-group-item {
+  border-color: #e0e0e0;
+}
+
+.preferences-alert {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.preferences-calendar-select.form-select:disabled {
+  background-color: #f6f6f6;
+}

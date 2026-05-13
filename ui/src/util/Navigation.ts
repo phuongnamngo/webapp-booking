@@ -37,6 +37,14 @@ export default class Navigation {
     return `/admin/bookings/?${query}`;
   }
 
+  static adminSeatTypes(): string {
+    return "/admin/seat-types/";
+  }
+
+  static adminSeatTypeDetails(id: string): string {
+    return `/admin/seat-types/${id}`;
+  }
+
   static adminGroupDetails(groupId: string): string {
     return `/admin/groups/${groupId}`;
   }

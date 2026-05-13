@@ -64,7 +64,9 @@ export default class FullLayout extends React.Component<Props, State> {
               <div className="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                 <h1 className="h2">{this.props.headline}</h1>
                 <div className="btn-toolbar mb-2 mb-md-0">
-                  <div className="btn-group me-2">{this.props.buttons}</div>
+                  <div className="btn-group me-2 full-layout-buttons">
+                    {this.props.buttons}
+                  </div>
                 </div>
               </div>
               {this.props.children}
