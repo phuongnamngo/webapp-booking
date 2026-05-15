@@ -2883,7 +2883,7 @@ export class Search extends React.Component<Props, State> {
                 </span>
               );
             })}
-            <p
+            <div
               hidden={!myBooking || !hasRecurringBooking}
               style={{ marginTop: "15px", marginBottom: "0" }}
             >
@@ -2896,7 +2896,7 @@ export class Search extends React.Component<Props, State> {
                 checked={this.state.cancelSeries}
                 label={this.props.t("cancelAllUpcomingBookings")}
               />
-            </p>
+            </div>
             {this.renderModalBookingTimeControls()}
             <Form.Group
               as={Row}
@@ -3165,7 +3165,7 @@ export class Search extends React.Component<Props, State> {
           {bookings.map((item) => (
             <span key={item.user.id}>{this.renderBookingNameRow(item)}</span>
           ))}
-          <p
+          <div
             hidden={!myBooking || !hasRecurringBooking}
             style={{ marginTop: "15px", marginBottom: "0" }}
           >
@@ -3178,7 +3178,7 @@ export class Search extends React.Component<Props, State> {
               checked={this.state.cancelSeries}
               label={this.props.t("cancelAllUpcomingBookings")}
             />
-          </p>
+          </div>
         </Modal.Body>
         <Modal.Footer>
           <Button

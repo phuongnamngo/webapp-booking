@@ -34,6 +34,8 @@ type Config struct {
 	ACSHost                             string
 	ACSAccessKey                        string
 	MockSendmail                        bool
+	DailyBookingReportEnabled           bool
+	DailyBookingReportRecipients        []string
 	Development                         bool
 	InitOrgName                         string
 	InitOrgUser                         string
@@ -116,6 +118,11 @@ func (c *Config) ReadConfig() {
 	c.ACSHost = c.getEnv("ACS_HOST", "")
 	c.ACSAccessKey = c.getEnv("ACS_ACCESS_KEY", "")
 	c.MockSendmail = (c.getEnv("MOCK_SENDMAIL", "0") == "1")
+	c.DailyBookingReportEnabled = (c.getEnv("DAILY_BOOKING_REPORT_ENABLED", "0") == "1")
+	c.DailyBookingReportRecipients = strings.Split(c.getEnv("DAILY_BOOKING_REPORT_RECIPIENTS", ""), ",")
+	if len(c.DailyBookingReportRecipients) == 1 && c.DailyBookingReportRecipients[0] == "" {
+		c.DailyBookingReportRecipients = []string{}
+	}
 	c.InitOrgName = c.getEnv("INIT_ORG_NAME", "Sample Company")
 	c.InitOrgUser = c.getEnv("INIT_ORG_USER", "admin")
 	c.InitOrgPass = c.getEnv("INIT_ORG_PASS", "Sea!surf1ng")
@@ -172,7 +179,7 @@ func (c *Config) ReadConfig() {
 		log.Println("Warning: MAX_SESSIONS_PER_USER must be at least 1. Defaulting to 10.")
 		c.MaxSessionsPerUser = 10
 	}
-	c.WebAuthnRPDisplayName = c.getEnv("WEBAUTHN_RP_DISPLAY_NAME", "Seatsurfing")
+	c.WebAuthnRPDisplayName = c.getEnv("WEBAUTHN_RP_DISPLAY_NAME", "LNT Partners")
 	c.MaxPasskeysPerUser = c.getEnvInt("MAX_PASSKEYS_PER_USER", 10)
 	if c.MaxPasskeysPerUser < 1 {
 		log.Println("Warning: MAX_PASSKEYS_PER_USER must be at least 1. Defaulting to 10.")

@@ -43,6 +43,17 @@ type BookingPresenceItem struct {
 	Presence map[string]int
 }
 
+type DailyBookingReportRow struct {
+	OrganizationID string
+	UserFirstname  string
+	UserLastname   string
+	UserEmail      string
+	Area           string
+	Space          string
+	Enter          time.Time
+	Leave          time.Time
+}
+
 var bookingRepository *BookingRepository
 var bookingRepositoryOnce sync.Once
 
@@ -278,6 +289,51 @@ func (r *BookingRepository) GetAllCurrentByOrg(organizationID string, userEmail 
 			return nil, err
 		}
 		result = append(result, e)
+	}
+	return result, nil
+}
+
+func (r *BookingRepository) GetDailyBookingReportRows(startTime, endTime time.Time) ([]*DailyBookingReportRow, error) {
+	rows, err := GetDatabase().DB().Query(`
+		SELECT
+			locations.organization_id,
+			users.firstname,
+			users.lastname,
+			users.email,
+			locations.name,
+			spaces.name,
+			bookings.enter_time,
+			bookings.leave_time
+		FROM bookings
+		INNER JOIN spaces ON bookings.space_id = spaces.id
+		INNER JOIN locations ON spaces.location_id = locations.id
+		INNER JOIN users ON bookings.user_id = users.id
+		WHERE bookings.approved = TRUE
+		  AND bookings.enter_time >= $1
+		  AND bookings.enter_time < $2
+		ORDER BY locations.name ASC, spaces.name ASC, users.firstname ASC, users.lastname ASC, users.email ASC
+	`, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []*DailyBookingReportRow{}
+	for rows.Next() {
+		row := &DailyBookingReportRow{}
+		if err := rows.Scan(
+			&row.OrganizationID,
+			&row.UserFirstname,
+			&row.UserLastname,
+			&row.UserEmail,
+			&row.Area,
+			&row.Space,
+			&row.Enter,
+			&row.Leave,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
 	}
 	return result, nil
 }

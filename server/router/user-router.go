@@ -332,7 +332,7 @@ func (router *UserRouter) generateTotp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	opts := totp.GenerateOpts{
-		Issuer:      "Seatsurfing for " + org.Name,
+		Issuer:      "LNT Partners for " + org.Name,
 		AccountName: GetRequestUser(r).Email,
 	}
 	key, err := totp.Generate(opts)

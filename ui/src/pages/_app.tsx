@@ -288,7 +288,7 @@ class App extends React.Component<Props, State> {
           <link rel="shortcut icon" href="/ui/favicon-192.png" />
           <link rel="apple-touch-icon" href="/ui/favicon-192.png" />
           <link rel="apple-touch-startup-image" href="/ui/favicon-1024.png" />
-          <title>iDeskBooking</title>
+          <title>LNT Partners</title>
         </Head>
         {this.state.showTotpEnforcement && (
           <TotpSetupModal

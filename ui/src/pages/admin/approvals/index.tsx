@@ -174,10 +174,10 @@ class Approvals extends React.Component<Props, State> {
 
   exportTable = (e: any) => {
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-approvals", format: "xlsx" },
+      { anchor: e.target, filename: "lnt-partners-approvals", format: "xlsx" },
       [
         {
-          name: "iDeskBooking Approvals",
+          name: "LNT Partners Approvals",
           from: { table: "datatable" },
           removeColumns: [0, 7, 8],
         },

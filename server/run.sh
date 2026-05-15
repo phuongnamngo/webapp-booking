@@ -40,7 +40,7 @@ if [ -f .env ]; then
 fi
 
 # start Seatsurfing server
-echo "Starting Seatsurfing …"
+echo "Starting LNT Partners …"
 DEV=$DEV PUBLIC_SCHEME=$PUBLIC_SCHEME PUBLIC_PORT=$PUBLIC_PORT CRYPT_KEY=$CRYPT_KEY STATIC_UI_PATH=$STATIC_UI_PATH PLUGINS_SUB_PATH=$PLUGINS_SUB_PATH SMTP_HOST=$SMTP_HOST SMTP_PORT=$SMTP_PORT go run `ls *.go | grep -v _test.go`
 
 # Stop mailhog and postgres

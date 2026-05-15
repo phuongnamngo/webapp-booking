@@ -1,5 +1,5 @@
 {
-  "subject": "Deine iDeskBooking Buchung: Aktualisiert",
+  "subject": "Deine LNT Partners Buchung: Aktualisiert",
   "headline": "Hallo {{recipientName}},",
   "paragraphs": [
     "deine Buchung wurde aktualisiert.",

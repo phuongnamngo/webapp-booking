@@ -1,8 +1,8 @@
 {
-  "subject": "Welcome to iDeskBooking - Set your password",
+  "subject": "Welcome to LNT Partners - Set your password",
   "headline": "Hello {{recipientName}},",
   "paragraphs": [
-    "You've been invited to join iDeskBooking. To get started, please set your password."
+    "You've been invited to join LNT Partners. To get started, please set your password."
   ],
   "buttons": [
     {

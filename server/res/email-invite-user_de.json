@@ -1,8 +1,8 @@
 {
-  "subject": "Willkommen bei iDeskBooking - Kennwort festlegen",
+  "subject": "Willkommen bei LNT Partners - Kennwort festlegen",
   "headline": "Hallo {{recipientName}},",
   "paragraphs": [
-    "du wurdest zu iDeskBooking eingeladen. Um loszulegen, lege bitte ein Kennwort fest."
+    "du wurdest zu LNT Partners eingeladen. Um loszulegen, lege bitte ein Kennwort fest."
   ],
   "buttons": [
     {

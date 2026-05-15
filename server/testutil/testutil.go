@@ -1,9 +1,11 @@
 package testutil
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"runtime/debug"
@@ -21,6 +23,7 @@ import (
 
 const TestPassword = "Sea!surf1ng"
 const TestPasswordNew = "Changed!Pass1"
+const DefaultTestPostgresURL = "postgres://postgres:root@localhost/seatsurfing_test?sslmode=disable"
 
 type LoginResponse struct {
 	RequireOTP   bool   `json:"otpRequired"`
@@ -269,13 +272,57 @@ func CreateTestBooking9To5(user *User, space *Space, offsetDay int) *Booking {
 	return booking
 }
 
+func resolveTestPostgresURL(baseURL, overrideURL string) (string, error) {
+	if overrideURL != "" {
+		requireTestDatabaseURL(overrideURL)
+		return overrideURL, nil
+	}
+	if baseURL == "" {
+		requireTestDatabaseURL(DefaultTestPostgresURL)
+		return DefaultTestPostgresURL, nil
+	}
+
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	dbName := strings.TrimPrefix(parsedURL.Path, "/")
+	if dbName == "" {
+		return "", fmt.Errorf("POSTGRES_URL must include a database name")
+	}
+	if !strings.HasSuffix(dbName, "_test") {
+		dbName += "_test"
+	}
+	parsedURL.Path = "/" + dbName
+
+	resolvedURL := parsedURL.String()
+	requireTestDatabaseURL(resolvedURL)
+	return resolvedURL, nil
+}
+
+func requireTestDatabaseURL(rawURL string) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		panic(fmt.Sprintf("invalid test database URL %q: %v", rawURL, err))
+	}
+	dbName := strings.TrimPrefix(parsedURL.Path, "/")
+	if dbName == "" {
+		panic("test database URL must include a database name")
+	}
+	if !strings.HasSuffix(dbName, "_test") {
+		panic(fmt.Sprintf("refusing to run destructive test DB operation against non-test database %q", dbName))
+	}
+}
+
 func DropTestDB() {
+	requireTestDatabaseURL(GetConfig().PostgresURL)
 	for _, s := range DatabaseTables {
 		GetDatabase().DB().Exec("DROP TABLE IF EXISTS " + s)
 	}
 }
 
 func ClearTestDB() {
+	requireTestDatabaseURL(GetConfig().PostgresURL)
 	for _, s := range DatabaseTables {
 		GetDatabase().DB().Exec("TRUNCATE " + s)
 	}
@@ -354,9 +401,11 @@ func AuthAttemptRepositoryIsUserDisabled(t *testing.T, userID string) bool {
 }
 
 func TestRunner(m *testing.M) {
-	if os.Getenv("POSTGRES_URL") == "" {
-		os.Setenv("POSTGRES_URL", "postgres://postgres:root@localhost/seatsurfing_test?sslmode=disable")
+	testPostgresURL, err := resolveTestPostgresURL(os.Getenv("POSTGRES_URL"), os.Getenv("POSTGRES_URL_TEST"))
+	if err != nil {
+		panic(err)
 	}
+	os.Setenv("POSTGRES_URL", testPostgresURL)
 	os.Setenv("MOCK_SENDMAIL", "1")
 	os.Setenv("ALLOW_ORG_DELETE", "1")
 	os.Setenv("LOGIN_PROTECTION_MAX_FAILS", "3")

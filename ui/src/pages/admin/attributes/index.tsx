@@ -84,8 +84,8 @@ class Attributes extends React.Component<Props, State> {
       RendererUtils.stateXls(item.spaceApplicable, t),
     ]);
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-attributes", format: "xlsx" },
-      [{ name: "iDeskBooking Attributes", from: { array: [headers, ...rows] } }],
+      { anchor: e.target, filename: "lnt-partners-attributes", format: "xlsx" },
+      [{ name: "LNT Partners Attributes", from: { array: [headers, ...rows] } }],
     );
   };
 

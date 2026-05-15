@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/seatsurfing/seatsurfing/server/repository"
 	. "github.com/seatsurfing/seatsurfing/server/router"
@@ -428,4 +430,100 @@ func TestSettingsGetTimezones(t *testing.T) {
 	if len(resBody) == 0 {
 		t.Fatal("Expected non-empty timezone list")
 	}
+}
+
+func TestSettingsDailyBookingReportRouteForbiddenForNonAdmin(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+	loginResponse := LoginTestUser(user.ID)
+
+	req := NewHTTPRequest("POST", "/setting/test-daily-booking-report-email", loginResponse.UserID, bytes.NewBufferString(`{"previewOnly":true,"recipients":["boss@test.com"]}`))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestSettingsDailyBookingReportPreviewReturnsSubjectRecipientsAndHtml(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	user := CreateTestUserInOrgWithName(org, "john.doe@test.com", UserRoleUser)
+	user.Firstname = "John"
+	user.Lastname = "Doe"
+	CheckTestIsNil(t, GetUserRepository().Update(user))
+
+	location := &Location{Name: "Floor 5", OrganizationID: org.ID}
+	CheckTestIsNil(t, GetLocationRepository().Create(location))
+	space := &Space{Name: "Desk A01", LocationID: location.ID}
+	CheckTestIsNil(t, GetSpaceRepository().Create(space))
+
+	loc, err := time.LoadLocation("Asia/Ho_Chi_Minh")
+	CheckTestIsNil(t, err)
+	booking := &Booking{
+		UserID:   user.ID,
+		SpaceID:  space.ID,
+		Enter:    time.Date(2026, 5, 13, 9, 0, 0, 0, loc),
+		Leave:    time.Date(2026, 5, 13, 18, 0, 0, 0, loc),
+		Approved: true,
+	}
+	CheckTestIsNil(t, GetBookingRepository().Create(booking))
+
+	payload := `{"previewOnly":true,"date":"2026-05-13","recipients":["boss@test.com"]}`
+	req := NewHTTPRequest("POST", "/setting/test-daily-booking-report-email", loginResponse.UserID, bytes.NewBufferString(payload))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var body struct {
+		Subject     string   `json:"subject"`
+		ReportDate  string   `json:"reportDate"`
+		Recipients  []string `json:"recipients"`
+		RowCount    int      `json:"rowCount"`
+		PreviewHTML string   `json:"previewHtml"`
+		Sent        bool     `json:"sent"`
+	}
+	json.Unmarshal(res.Body.Bytes(), &body)
+	CheckTestString(t, "Daily booking report for 2026-05-13", body.Subject)
+	CheckTestString(t, "2026-05-13", body.ReportDate)
+	CheckTestInt(t, 1, len(body.Recipients))
+	CheckTestString(t, "boss@test.com", body.Recipients[0])
+	CheckTestInt(t, 1, body.RowCount)
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "User name"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "Space"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "Booking time"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "09:00 - 18:00"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "font-size:14px"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "border-collapse:collapse"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "padding:12px 16px"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "John Doe"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "Floor 5"))
+	CheckTestBool(t, true, strings.Contains(body.PreviewHTML, "Desk A01"))
+	CheckTestBool(t, false, body.Sent)
+}
+
+func TestSettingsDailyBookingReportRouteRejectsInvalidDate(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	req := NewHTTPRequest("POST", "/setting/test-daily-booking-report-email", loginResponse.UserID, bytes.NewBufferString(`{"previewOnly":true,"date":"13-05-2026","recipients":["boss@test.com"]}`))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+}
+
+func TestSettingsDailyBookingReportSendUsesMockSendmail(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	req := NewHTTPRequest("POST", "/setting/test-daily-booking-report-email", loginResponse.UserID, bytes.NewBufferString(`{"previewOnly":false,"date":"2026-05-13","recipients":["boss@test.com"]}`))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	CheckTestBool(t, true, strings.Contains(SendMailMockContent, "No approved bookings for 2026-05-13."))
 }

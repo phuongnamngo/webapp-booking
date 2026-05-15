@@ -106,8 +106,8 @@ class Users extends React.Component<Props, State> {
 
   exportTable = (e: any) => {
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-users", format: "xlsx" },
-      [{ name: "iDeskBooking Users", from: { table: "datatable" } }],
+      { anchor: e.target, filename: "lnt-partners-users", format: "xlsx" },
+      [{ name: "LNT Partners Users", from: { table: "datatable" } }],
     );
   };
 

@@ -362,6 +362,109 @@ func TestBookingRepositoryGetAllCurrentByOrg(t *testing.T) {
 	CheckTestInt(t, 1, len(currentBookings))
 }
 
+func TestBookingRepositoryGetDailyBookingReportRowsOnlyApproved(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrgWithName(org, "approved@test.com", UserRoleUser)
+	user.Firstname = "Approved"
+	user.Lastname = "User"
+	CheckTestIsNil(t, GetUserRepository().Update(user))
+	_, space := CreateTestLocationAndSpace(org)
+
+	start := time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	approvedBooking := &Booking{
+		UserID:   user.ID,
+		SpaceID:  space.ID,
+		Enter:    start.Add(9 * time.Hour),
+		Leave:    start.Add(10 * time.Hour),
+		Approved: true,
+	}
+	CheckTestIsNil(t, GetBookingRepository().Create(approvedBooking))
+
+	pendingBooking := &Booking{
+		UserID:   user.ID,
+		SpaceID:  space.ID,
+		Enter:    start.Add(11 * time.Hour),
+		Leave:    start.Add(12 * time.Hour),
+		Approved: false,
+	}
+	CheckTestIsNil(t, GetBookingRepository().Create(pendingBooking))
+
+	rows, err := GetBookingRepository().GetDailyBookingReportRows(start, end)
+
+	CheckTestIsNil(t, err)
+	CheckTestInt(t, 1, len(rows))
+	CheckTestString(t, user.Email, rows[0].UserEmail)
+}
+
+func TestBookingRepositoryGetDailyBookingReportRowsSortsByAreaSpaceAndUser(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+
+	userB := CreateTestUserInOrgWithName(org, "b-user@test.com", UserRoleUser)
+	userB.Firstname = "B"
+	userB.Lastname = "User"
+	CheckTestIsNil(t, GetUserRepository().Update(userB))
+
+	userA := CreateTestUserInOrgWithName(org, "a-user@test.com", UserRoleUser)
+	userA.Firstname = "A"
+	userA.Lastname = "User"
+	CheckTestIsNil(t, GetUserRepository().Update(userA))
+
+	locationB := &Location{Name: "Floor B", OrganizationID: org.ID}
+	locationA := &Location{Name: "Floor A", OrganizationID: org.ID}
+	CheckTestIsNil(t, GetLocationRepository().Create(locationB))
+	CheckTestIsNil(t, GetLocationRepository().Create(locationA))
+
+	spaceB := &Space{Name: "Desk 2", LocationID: locationA.ID}
+	spaceA := &Space{Name: "Desk 1", LocationID: locationA.ID}
+	spaceC := &Space{Name: "Desk 1", LocationID: locationB.ID}
+	CheckTestIsNil(t, GetSpaceRepository().Create(spaceB))
+	CheckTestIsNil(t, GetSpaceRepository().Create(spaceA))
+	CheckTestIsNil(t, GetSpaceRepository().Create(spaceC))
+
+	start := time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	CheckTestIsNil(t, GetBookingRepository().Create(&Booking{
+		UserID:   userB.ID,
+		SpaceID:  spaceB.ID,
+		Enter:    start.Add(9 * time.Hour),
+		Leave:    start.Add(10 * time.Hour),
+		Approved: true,
+	}))
+	CheckTestIsNil(t, GetBookingRepository().Create(&Booking{
+		UserID:   userA.ID,
+		SpaceID:  spaceA.ID,
+		Enter:    start.Add(11 * time.Hour),
+		Leave:    start.Add(12 * time.Hour),
+		Approved: true,
+	}))
+	CheckTestIsNil(t, GetBookingRepository().Create(&Booking{
+		UserID:   userA.ID,
+		SpaceID:  spaceC.ID,
+		Enter:    start.Add(13 * time.Hour),
+		Leave:    start.Add(14 * time.Hour),
+		Approved: true,
+	}))
+
+	rows, err := GetBookingRepository().GetDailyBookingReportRows(start, end)
+
+	CheckTestIsNil(t, err)
+	CheckTestInt(t, 3, len(rows))
+	CheckTestString(t, "Floor A", rows[0].Area)
+	CheckTestString(t, "Desk 1", rows[0].Space)
+	CheckTestString(t, "a-user@test.com", rows[0].UserEmail)
+	CheckTestString(t, "Floor A", rows[1].Area)
+	CheckTestString(t, "Desk 2", rows[1].Space)
+	CheckTestString(t, "b-user@test.com", rows[1].UserEmail)
+	CheckTestString(t, "Floor B", rows[2].Area)
+	CheckTestString(t, "Desk 1", rows[2].Space)
+	CheckTestString(t, "a-user@test.com", rows[2].UserEmail)
+}
+
 func TestPurgeOldBookings(t *testing.T) {
 	ClearTestDB()
 	org := CreateTestOrg("test.com")

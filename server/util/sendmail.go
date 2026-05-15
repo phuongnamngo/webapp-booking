@@ -339,7 +339,7 @@ func SendEmailWithBodyAndAttachmentAndOrg(recipient *MailAddress, subject, body,
 	}
 	sender := &MailAddress{
 		Address:     GetConfig().MailSenderAddress,
-		DisplayName: "Seatsurfing",
+		DisplayName: "LNT Partners",
 	}
 	if GetConfig().MailService == "acs" {
 		err = acsDialAndSend(recipient, sender, subject, "", body, attachments)

@@ -1,5 +1,5 @@
 {
-  "subject": "Deine iDeskBooking Buchung: Abgelehnt",
+  "subject": "Deine LNT Partners Buchung: Abgelehnt",
   "headline": "Hallo {{recipientName}},",
   "paragraphs": [
     "deine Buchungsanfrage wurde abgelehnt.",

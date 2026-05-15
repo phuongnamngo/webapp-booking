@@ -1283,8 +1283,8 @@ class EditLocation extends React.Component<Props, State> {
       space.id ? Navigation.spaceAbsolute(this.entity.id, space.id) : "",
     ]);
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-spaces", format: "xlsx" },
-      [{ name: "iDeskBooking Spaces", from: { array: [headers, ...rows] } }],
+      { anchor: e.target, filename: "lnt-partners-spaces", format: "xlsx" },
+      [{ name: "LNT Partners Spaces", from: { array: [headers, ...rows] } }],
     );
   };
 

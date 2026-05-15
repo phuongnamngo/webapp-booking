@@ -11,7 +11,7 @@ import (
 
 func main() {
 	log.Println("Starting …")
-	log.Println("Seatsurfing version " + GetProductVersion())
+	log.Println("LNT Partners version " + GetProductVersion())
 	db := GetDatabase()
 	a := GetApp()
 	a.InitializeDatabases()

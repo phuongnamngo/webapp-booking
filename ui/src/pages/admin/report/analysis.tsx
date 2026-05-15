@@ -129,10 +129,10 @@ class ReportAnalysis extends React.Component<Props, State> {
       return value;
     };
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-analysis", format: "xlsx" },
+      { anchor: e.target, filename: "lnt-partners-analysis", format: "xlsx" },
       [
         {
-          name: "iDeskBooking Analysis",
+          name: "LNT Partners Analysis",
           from: { table: "datatable" },
           fixValue: fixFn,
         },

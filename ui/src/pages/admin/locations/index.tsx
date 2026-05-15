@@ -110,8 +110,8 @@ class Locations extends React.Component<Props, State> {
       Navigation.locationAbsolute(loc.id),
     ]);
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-areas", format: "xlsx" },
-      [{ name: "iDeskBooking Areas", from: { array: [headers, ...rows] } }],
+      { anchor: e.target, filename: "lnt-partners-areas", format: "xlsx" },
+      [{ name: "LNT Partners Areas", from: { array: [headers, ...rows] } }],
     );
   };
 

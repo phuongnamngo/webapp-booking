@@ -69,6 +69,7 @@ class AdminNavBar extends React.Component<Props, State> {
             className="d-none d-md-block"
           />
           <img
+            style={{ width: "30px", height: "30px" }}
             src="/ui/seatsurfing_white_logo.svg"
             alt="iDeskBooking"
             className="d-block d-md-none"

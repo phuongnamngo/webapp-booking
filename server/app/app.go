@@ -263,6 +263,9 @@ func (a *App) onTimerTick() {
 	if time.Now().Minute() == 0 {
 		go a.CheckDomainAccessibilityTimer()
 	}
+	if err := GetDailyBookingReportService().RunIfDue(time.Now()); err != nil {
+		log.Println("daily booking report:", err)
+	}
 }
 
 func (a *App) InitializeTimers() {

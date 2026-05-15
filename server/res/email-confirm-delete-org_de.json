@@ -1,17 +1,17 @@
 {
-  "subject": "[ACTION REQUIRED] iDeskBooking: Löschung deiner iDeskBooking-Instanz bestätigen",
+  "subject": "[ACTION REQUIRED] LNT Partners: Löschung deiner LNT Partners-Instanz bestätigen",
   "headline": "Hallo {{recipientName}},",
   "paragraphs": [
-    "wir haben eine Anfrage zur dauerhaften Löschung deiner iDeskBooking-Instanz „{{orgName}}“ erhalten."
+    "wir haben eine Anfrage zur dauerhaften Löschung deiner LNT Partners-Instanz „{{orgName}}“ erhalten."
   ],
   "buttons": [
     {
-      "paragraph": "BITTE BEACHTEN: Das Löschen der iDeskBooking-Instanz umfasst die endgültige Löschung aller Buchungen, Bereiche, Arbeitsplätze und Benutzer. Eine Wiederherstellung ist nicht möglich! Klicke auf die Schaltfläche unten, um diese Aktion zu bestätigen.",
+      "paragraph": "BITTE BEACHTEN: Das Löschen der LNT Partners-Instanz umfasst die endgültige Löschung aller Buchungen, Bereiche, Arbeitsplätze und Benutzer. Eine Wiederherstellung ist nicht möglich! Klicke auf die Schaltfläche unten, um diese Aktion zu bestätigen.",
       "label": "Instanz endgültig löschen",
       "url": "{{orgDomain}}ui/admin/organizations/delete/{{confirmID}}/"
     }
   ],
   "finalParagraphs": [
-    "Falls du die Löschung der iDeskBooking-Instanz nicht angefordert hast, kannst du diese E-Mail ignorieren. Wir werden die Instanz nicht löschen, wenn du nicht auf den obigen Link klickst."
+    "Falls du die Löschung der LNT Partners-Instanz nicht angefordert hast, kannst du diese E-Mail ignorieren. Wir werden die Instanz nicht löschen, wenn du nicht auf den obigen Link klickst."
   ]
 }

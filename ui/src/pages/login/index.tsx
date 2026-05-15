@@ -484,7 +484,7 @@ class Login extends React.Component<Props, State> {
               </Button>
             </p>
           </Form>
-          {copyrightFooter}
+          {/* {copyrightFooter} */}
         </div>
       );
     }
@@ -735,7 +735,7 @@ class Login extends React.Component<Props, State> {
             <Link href="/resetpw">{this.props.t("forgotPassword")}</Link>
           </p>
         </Form>
-        {copyrightFooter}
+        {/* {copyrightFooter} */}
       </div>
     );
   }

@@ -67,8 +67,8 @@ class Groups extends React.Component<Props, State> {
 
   exportTable = (e: any) => {
     return this.ExcellentExport.convert(
-      { anchor: e.target, filename: "ideskbooking-groups", format: "xlsx" },
-      [{ name: "iDeskBooking Groups", from: { table: "datatable" } }],
+      { anchor: e.target, filename: "lnt-partners-groups", format: "xlsx" },
+      [{ name: "LNT Partners Groups", from: { table: "datatable" } }],
     );
   };
 

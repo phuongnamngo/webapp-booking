@@ -1,5 +1,5 @@
 {
-  "subject": "Your iDeskBooking booking: Declined",
+  "subject": "Your LNT Partners booking: Declined",
   "headline": "Hello {{recipientName}},",
   "paragraphs": [
     "Your booking request has been declined.",

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -45,6 +46,21 @@ type SettingsRouterWelcomeScreen struct {
 	Source string `json:"src"`
 }
 
+type DailyBookingReportTestRequest struct {
+	Date        string   `json:"date"`
+	PreviewOnly bool     `json:"previewOnly"`
+	Recipients  []string `json:"recipients"`
+}
+
+type DailyBookingReportTestResponse struct {
+	Subject     string   `json:"subject"`
+	ReportDate  string   `json:"reportDate"`
+	Recipients  []string `json:"recipients"`
+	RowCount    int      `json:"rowCount"`
+	PreviewHTML string   `json:"previewHtml,omitempty"`
+	Sent        bool     `json:"sent"`
+}
+
 var (
 	ErrAlreadyExists               = errors.New("resource already exists")
 	SysSettingOrgSignupDelete      = "_sys_org_signup_delete"
@@ -59,6 +75,7 @@ func (router *SettingsRouter) SetupRoutes(s *mux.Router) {
 	s.HandleFunc("/timezones", router.getTimezones).Methods("GET")
 	s.HandleFunc("/office-hours", router.getOfficeHours).Methods("GET")
 	s.HandleFunc("/office-hours", router.setOfficeHours).Methods("PUT")
+	s.HandleFunc("/test-daily-booking-report-email", router.testDailyBookingReportEmail).Methods("POST")
 	s.HandleFunc("/{name}", router.getSetting).Methods("GET")
 	s.HandleFunc("/{name}", router.setSetting).Methods("PUT")
 	s.HandleFunc("/", router.getAll).Methods("GET")
@@ -108,6 +125,57 @@ func (router *SettingsRouter) setOfficeHours(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	SendUpdated(w)
+}
+
+func (router *SettingsRouter) testDailyBookingReportEmail(w http.ResponseWriter, r *http.Request) {
+	user := GetRequestUser(r)
+	if !CanAdminOrg(user, user.OrganizationID) {
+		SendForbidden(w)
+		return
+	}
+
+	var req DailyBookingReportTestRequest
+	if err := UnmarshalBody(r, &req); err != nil {
+		log.Println(err)
+		SendBadRequest(w)
+		return
+	}
+
+	var overrideDate *time.Time
+	if req.Date != "" {
+		parsed, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			SendBadRequest(w)
+			return
+		}
+		overrideDate = &parsed
+	}
+
+	preview, err := GetDailyBookingReportService().BuildPreview(time.Now(), overrideDate, req.Recipients)
+	if err != nil {
+		log.Println(err)
+		SendBadRequest(w)
+		return
+	}
+
+	sent := false
+	if !req.PreviewOnly {
+		if err := GetDailyBookingReportService().Send(preview); err != nil {
+			log.Println(err)
+			SendInternalServerError(w)
+			return
+		}
+		sent = true
+	}
+
+	SendJSON(w, &DailyBookingReportTestResponse{
+		Subject:     preview.Subject,
+		ReportDate:  preview.ReportDate,
+		Recipients:  preview.Recipients,
+		RowCount:    preview.RowCount,
+		PreviewHTML: preview.PreviewHTML,
+		Sent:        sent,
+	})
 }
 
 func (router *SettingsRouter) getSetting(w http.ResponseWriter, r *http.Request) {

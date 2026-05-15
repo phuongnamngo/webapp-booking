@@ -112,7 +112,7 @@ func getWebAuthnInstance(org *Organization) (*webauthn.WebAuthn, error) {
 	}
 	rpDisplayName := GetConfig().WebAuthnRPDisplayName
 	if rpDisplayName == "" {
-		rpDisplayName = "Seatsurfing"
+		rpDisplayName = "LNT Partners"
 	}
 	return webauthn.New(&webauthn.Config{
 		RPID:          rpID,
