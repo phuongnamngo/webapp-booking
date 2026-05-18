@@ -2613,7 +2613,7 @@ export class Search extends React.Component<Props, State> {
             </Form.Group>
 
             {/* Time selection */}
-            {!RuntimeConfig.INFOS.dailyBasisBooking && (
+            {/* {!RuntimeConfig.INFOS.dailyBasisBooking && (
               <Form.Group className="d-flex margin-top-10">
                 <div className="me-2">
                   <TimeIcon
@@ -2658,7 +2658,7 @@ export class Search extends React.Component<Props, State> {
                   />
                 </button>
               </Form.Group>
-            )}
+            )} */}
 
             {hint}
 
