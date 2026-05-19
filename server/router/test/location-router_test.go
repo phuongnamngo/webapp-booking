@@ -144,9 +144,9 @@ func TestLocationsList(t *testing.T) {
 	if len(resBody) != 3 {
 		t.Fatalf("Expected array with 3 elements")
 	}
-	CheckTestString(t, "Location 0", resBody[0].Name)
-	CheckTestString(t, "Location 1", resBody[1].Name)
-	CheckTestString(t, "Location 2", resBody[2].Name)
+	CheckTestString(t, "Location 1", resBody[0].Name)
+	CheckTestString(t, "Location 2", resBody[1].Name)
+	CheckTestString(t, "Location 0", resBody[2].Name)
 }
 
 func TestLocationsUpload(t *testing.T) {
