@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -151,7 +152,17 @@ func (router *SettingsRouter) testDailyBookingReportEmail(w http.ResponseWriter,
 		overrideDate = &parsed
 	}
 
-	preview, err := GetDailyBookingReportService().BuildPreview(time.Now(), overrideDate, req.Recipients)
+	cfg, err := LoadDailyBookingReportConfig(user.OrganizationID)
+	if err != nil {
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	recipientsCSV := ""
+	if cfg != nil {
+		recipientsCSV = cfg.RecipientsCSV
+	}
+	preview, err := GetDailyBookingReportService().BuildPreview(time.Now(), overrideDate, req.Recipients, recipientsCSV)
 	if err != nil {
 		log.Println(err)
 		SendBadRequest(w)
@@ -403,7 +414,10 @@ func (router *SettingsRouter) isValidSettingNameReadAdmin(name string) bool {
 		name == SettingBookingRetentionDays.Name ||
 		name == SettingEnforceTOTP.Name ||
 		name == SettingNewUserDefaultMailNotification.Name ||
-		name == SettingTargetUtilizationHoursPerWeek.Name {
+		name == SettingTargetUtilizationHoursPerWeek.Name ||
+		name == SettingDailyBookingReportEnabled.Name ||
+		name == SettingDailyBookingReportRecipients.Name ||
+		name == SettingDailyBookingReportSendTime.Name {
 		return true
 	}
 	return false
@@ -433,7 +447,10 @@ func (router *SettingsRouter) isValidSettingNameWrite(name string) bool {
 		name == SettingNewUserDefaultMailNotification.Name ||
 		name == SettingEnforceTOTP.Name ||
 		name == SettingSubjectDefault.Name ||
-		name == SettingTargetUtilizationHoursPerWeek.Name {
+		name == SettingTargetUtilizationHoursPerWeek.Name ||
+		name == SettingDailyBookingReportEnabled.Name ||
+		name == SettingDailyBookingReportRecipients.Name ||
+		name == SettingDailyBookingReportSendTime.Name {
 		return true
 	}
 	return false
@@ -512,6 +529,15 @@ func (router *SettingsRouter) getSettingType(name string) SettingType {
 	if name == SettingSubjectDefault.Name {
 		return SettingSubjectDefault.Type
 	}
+	if name == SettingDailyBookingReportEnabled.Name {
+		return SettingDailyBookingReportEnabled.Type
+	}
+	if name == SettingDailyBookingReportRecipients.Name {
+		return SettingDailyBookingReportRecipients.Type
+	}
+	if name == SettingDailyBookingReportSendTime.Name {
+		return SettingDailyBookingReportSendTime.Type
+	}
 	return 0
 }
 
@@ -519,6 +545,9 @@ func (router *SettingsRouter) isValidSettingType(name string, value string) bool
 	settingType := router.getSettingType(name)
 	if settingType == 0 {
 		return false
+	}
+	if name == SettingDailyBookingReportRecipients.Name {
+		return len(value) <= 1024
 	}
 	if settingType == SettingTypeString && len(value) <= 256 {
 		return true
@@ -582,6 +611,28 @@ func (router *SettingsRouter) isValidSettingValue(name string, value string) boo
 			intVal != SettingSubjectDefaultRequired {
 			return false
 		}
+	}
+	if name == SettingDailyBookingReportRecipients.Name {
+		if len(value) > 1024 {
+			return false
+		}
+		for _, part := range strings.Split(value, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			if err := ValidateEmailAddress(trimmed); err != nil {
+				return false
+			}
+		}
+		return true
+	}
+	if name == SettingDailyBookingReportSendTime.Name {
+		if value == "" {
+			return true
+		}
+		_, _, err := parseSendTime(value)
+		return err == nil
 	}
 	return true
 }

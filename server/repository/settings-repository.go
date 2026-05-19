@@ -60,6 +60,9 @@ var (
 	SettingFeatureRecurringBookings       SettingName = SettingName{Name: "feature_recurring_bookings", Type: SettingTypeBool}
 	SettingEnforceTOTP                    SettingName = SettingName{Name: "enforce_totp", Type: SettingTypeBool}
 	SettingDailyBookingReportLastSentDate SettingName = SettingName{Name: "daily_booking_report_last_sent_date", Type: SettingTypeString}
+	SettingDailyBookingReportEnabled      SettingName = SettingName{Name: "daily_booking_report_enabled", Type: SettingTypeBool}
+	SettingDailyBookingReportRecipients   SettingName = SettingName{Name: "daily_booking_report_recipients", Type: SettingTypeString}
+	SettingDailyBookingReportSendTime     SettingName = SettingName{Name: "daily_booking_report_send_time", Type: SettingTypeString}
 )
 
 var settingsRepository *SettingsRepository
@@ -281,7 +284,10 @@ func (r *SettingsRepository) InitDefaultSettingsForOrg(organizationID string) er
 		"($1, '"+SettingBookingRetentionEnabled.Name+"', '0'), "+
 		"($1, '"+SettingBookingRetentionDays.Name+"', '365'), "+
 		"($1, '"+SettingSubjectDefault.Name+"', '"+strconv.Itoa(SettingSubjectDefaultOptional)+"'), "+
-		"($1, '"+SettingEnforceTOTP.Name+"', '0') "+
+		"($1, '"+SettingEnforceTOTP.Name+"', '0'), "+
+		"($1, '"+SettingDailyBookingReportEnabled.Name+"', '0'), "+
+		"($1, '"+SettingDailyBookingReportRecipients.Name+"', ''), "+
+		"($1, '"+SettingDailyBookingReportSendTime.Name+"', '08:00') "+
 		"ON CONFLICT (organization_id, name) DO NOTHING",
 		organizationID)
 	return err

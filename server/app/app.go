@@ -44,6 +44,7 @@ type App struct {
 func (a *App) InitializeDatabases() {
 	RunDBSchemaUpdates()
 	InitDefaultOrgSettings()
+	MigrateDailyBookingReportFromEnv()
 	InitDefaultUserPreferences()
 	// Set up email logging callback
 	SetEmailLogCallback(func(subject, recipient, organizationID string) error {

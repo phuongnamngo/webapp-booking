@@ -75,6 +75,11 @@ interface State {
   allowRecurringBookings: boolean;
   newUserDefaultMailNotification: boolean;
   enforceTOTP: boolean;
+  dailyBookingReportEnabled: boolean;
+  dailyBookingReportRecipients: string;
+  dailyBookingReportSendTime: string;
+  dailyBookingReportTesting: boolean;
+  dailyBookingReportTestError: boolean;
 }
 
 interface Props {
@@ -129,6 +134,11 @@ class Settings extends React.Component<Props, State> {
       allowRecurringBookings: true,
       newUserDefaultMailNotification: false,
       enforceTOTP: false,
+      dailyBookingReportEnabled: false,
+      dailyBookingReportRecipients: "",
+      dailyBookingReportSendTime: "08:00",
+      dailyBookingReportTesting: false,
+      dailyBookingReportTestError: false,
     };
   }
 
@@ -249,6 +259,12 @@ class Settings extends React.Component<Props, State> {
         if (s.name === "enforce_totp") state.enforceTOTP = s.value === "1";
         if (s.name === "_sys_org_signup_delete")
           state.allowOrgDelete = s.value === "1";
+        if (s.name === "daily_booking_report_enabled")
+          state.dailyBookingReportEnabled = s.value === "1";
+        if (s.name === "daily_booking_report_recipients")
+          state.dailyBookingReportRecipients = s.value;
+        if (s.name === "daily_booking_report_send_time")
+          state.dailyBookingReportSendTime = s.value || "08:00";
       });
       if (state.dailyBasisBooking && state.maxBookingDurationHours % 24 !== 0) {
         state.maxBookingDurationHours +=
@@ -281,6 +297,59 @@ class Settings extends React.Component<Props, State> {
     return Ajax.get("/setting/timezones").then((res) => {
       this.timezones = res.json;
     });
+  };
+
+  getDailyBookingReportRecipients = (): string[] => {
+    return this.state.dailyBookingReportRecipients
+      .split(",")
+      .map((email) => email.trim())
+      .filter((email) => email.length > 0);
+  };
+
+  previewDailyBookingReport = (): void => {
+    const recipients = this.getDailyBookingReportRecipients();
+    this.setState({
+      dailyBookingReportTesting: true,
+      dailyBookingReportTestError: false,
+    });
+    Ajax.postData("/setting/test-daily-booking-report-email", {
+      previewOnly: true,
+      recipients,
+    })
+      .then((res) => {
+        const previewWindow = window.open("", "_blank");
+        if (previewWindow) {
+          previewWindow.document.write(res.json.previewHtml || "");
+          previewWindow.document.close();
+        }
+      })
+      .catch(() => {
+        this.setState({ dailyBookingReportTestError: true });
+      })
+      .finally(() => {
+        this.setState({ dailyBookingReportTesting: false });
+      });
+  };
+
+  sendDailyBookingReportTest = (): void => {
+    if (!window.confirm(this.props.t("dailyBookingReportSendTestConfirm"))) {
+      return;
+    }
+    const recipients = this.getDailyBookingReportRecipients();
+    this.setState({
+      dailyBookingReportTesting: true,
+      dailyBookingReportTestError: false,
+    });
+    Ajax.postData("/setting/test-daily-booking-report-email", {
+      previewOnly: false,
+      recipients,
+    })
+      .catch(() => {
+        this.setState({ dailyBookingReportTestError: true });
+      })
+      .finally(() => {
+        this.setState({ dailyBookingReportTesting: false });
+      });
   };
 
   onSubmit = (e: any) => {
@@ -343,6 +412,18 @@ class Settings extends React.Component<Props, State> {
       new OrgSettings(
         "booking_retention_days",
         this.state.bookingRetentionDays.toString(),
+      ),
+      new OrgSettings(
+        "daily_booking_report_enabled",
+        this.state.dailyBookingReportEnabled ? "1" : "0",
+      ),
+      new OrgSettings(
+        "daily_booking_report_recipients",
+        this.state.dailyBookingReportRecipients,
+      ),
+      new OrgSettings(
+        "daily_booking_report_send_time",
+        this.state.dailyBookingReportSendTime || "08:00",
       ),
       new OrgSettings(
         "enable_max_hours_before_delete",
@@ -922,6 +1003,91 @@ class Settings extends React.Component<Props, State> {
                 />
                 <InputGroup.Text>{this.props.t("days")}</InputGroup.Text>
               </InputGroup>
+            </Col>
+          </Form.Group>
+          <Form.Group as={Row}>
+            <Form.Label column sm="2">
+              {this.props.t("dailyBookingReport")}
+            </Form.Label>
+            <Col sm="6">
+              <Form.Check
+                id="check-dailyBookingReportEnabled"
+                type="checkbox"
+                label={this.props.t("dailyBookingReportEnabled")}
+                checked={this.state.dailyBookingReportEnabled}
+                onChange={(e: any) =>
+                  this.setState({
+                    dailyBookingReportEnabled: e.target.checked,
+                  })
+                }
+              />
+              <div className="mt-3">
+                <Form.Label
+                  htmlFor="input-dailyBookingReportRecipients"
+                  className="d-block"
+                >
+                  {this.props.t("dailyBookingReportRecipients")}
+                </Form.Label>
+                <Form.Control
+                  id="input-dailyBookingReportRecipients"
+                  as="textarea"
+                  rows={2}
+                  value={this.state.dailyBookingReportRecipients}
+                  placeholder="email1@example.com, email2@example.com"
+                  onChange={(e: any) =>
+                    this.setState({
+                      dailyBookingReportRecipients: e.target.value,
+                    })
+                  }
+                />
+                <Form.Text className="text-muted d-block">
+                  {this.props.t("dailyBookingReportRecipientsHelp")}
+                </Form.Text>
+              </div>
+              <div className="mt-3">
+                <Form.Label
+                  htmlFor="input-dailyBookingReportSendTime"
+                  className="d-block"
+                >
+                  {this.props.t("dailyBookingReportSendTime")}
+                </Form.Label>
+                <Form.Control
+                  id="input-dailyBookingReportSendTime"
+                  type="time"
+                  value={this.state.dailyBookingReportSendTime}
+                  onChange={(e: any) =>
+                    this.setState({
+                      dailyBookingReportSendTime: e.target.value,
+                    })
+                  }
+                />
+                <Form.Text className="text-muted d-block">
+                  {this.props.t("dailyBookingReportSendTimeHelp")}
+                </Form.Text>
+              </div>
+              <div className="mt-2" style={{ display: "flex", gap: "0.5rem" }}>
+                <Button
+                  variant="outline-secondary"
+                  size="sm"
+                  disabled={this.state.dailyBookingReportTesting}
+                  onClick={this.previewDailyBookingReport}
+                >
+                  {this.props.t("dailyBookingReportPreview")}
+                </Button>
+                <Button
+                  variant="outline-primary"
+                  size="sm"
+                  disabled={this.state.dailyBookingReportTesting}
+                  onClick={this.sendDailyBookingReportTest}
+                >
+                  {this.props.t("dailyBookingReportSendTest")}
+                </Button>
+              </div>
+              {this.state.dailyBookingReportTestError && (
+                <Alert variant="danger" className="mt-2 mb-0">
+                  {this.props.t("dailyBookingReportTestError")}
+                </Alert>
+              )}
             </Col>
           </Form.Group>
           <Form.Group as={Row}>
