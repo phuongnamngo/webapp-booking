@@ -527,3 +527,45 @@ func TestSettingsDailyBookingReportSendUsesMockSendmail(t *testing.T) {
 	CheckTestResponseCode(t, http.StatusOK, res.Code)
 	CheckTestBool(t, true, strings.Contains(SendMailMockContent, "No approved bookings for 2026-05-13."))
 }
+
+func TestSettingsDailyBookingReportRecipientsRejectsInvalidEmail(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	req := NewHTTPRequest("PUT", "/setting/"+SettingDailyBookingReportRecipients.Name, loginResponse.UserID, bytes.NewBufferString(`{"value":"not-an-email"}`))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+}
+
+func TestSettingsDailyBookingReportSendTimeRejectsInvalidFormat(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	req := NewHTTPRequest("PUT", "/setting/"+SettingDailyBookingReportSendTime.Name, loginResponse.UserID, bytes.NewBufferString(`{"value":"8am"}`))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
+}
+
+func TestSettingsDailyBookingReportPreviewUsesSavedRecipientsWhenOverrideOmitted(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	CheckTestIsNil(t, GetSettingsRepository().Set(org.ID, SettingDailyBookingReportRecipients.Name, "saved@test.com"))
+
+	req := NewHTTPRequest("POST", "/setting/test-daily-booking-report-email", loginResponse.UserID, bytes.NewBufferString(`{"previewOnly":true}`))
+	res := ExecuteTestRequest(req)
+
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var body struct {
+		Recipients []string `json:"recipients"`
+	}
+	json.Unmarshal(res.Body.Bytes(), &body)
+	CheckTestInt(t, 1, len(body.Recipients))
+	CheckTestString(t, "saved@test.com", body.Recipients[0])
+}

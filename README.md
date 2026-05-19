@@ -97,7 +97,6 @@ Please refer to our [Kubernetes documentation](https://seatsurfing.io/docs/self-
 
 Please check out the [documentation](https://seatsurfing.io/docs/self-hosted/config) for information on available environment variables and further guidance.
 
-- `DAILY_BOOKING_REPORT_ENABLED`: set to `1` to send the daily booking report at `08:00` in `Asia/Ho_Chi_Minh`.
-- `DAILY_BOOKING_REPORT_RECIPIENTS`: comma-separated recipient list for the daily booking report email.
+**Daily booking report:** Configure under **Admin → Settings** (enable, recipients, send time). Reports use timezone `Asia/Ho_Chi_Minh` and cover approved bookings from the previous day.
 
 **Hint**: When running in an IPV6-only Docker/Podman environment with multiple network interfaces bound to the Frontend containers, setting the `LISTEN_ADDR` environment variable can be necessary as NextJS binds to only one network interface by default. Set it to `::` to bind to any address.

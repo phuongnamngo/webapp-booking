@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/seatsurfing/seatsurfing/server/config"
 	. "github.com/seatsurfing/seatsurfing/server/repository"
 	. "github.com/seatsurfing/seatsurfing/server/util"
 )
@@ -65,13 +64,18 @@ func (s *DailyBookingReportService) getVietnamNow(now time.Time) (time.Time, err
 	return now.In(loc), nil
 }
 
-func (s *DailyBookingReportService) ShouldRun(now time.Time, lastSentDate string) (bool, string, error) {
+func (s *DailyBookingReportService) ShouldRun(now time.Time, lastSentDate string, sendTime string) (bool, string, error) {
 	vietnamNow, err := s.getVietnamNow(now)
 	if err != nil {
 		return false, "", err
 	}
 	today := vietnamNow.Format("2006-01-02")
-	if vietnamNow.Hour() < 8 {
+	hour, minute, err := parseSendTime(ResolveSendTime(sendTime))
+	if err != nil {
+		return false, today, err
+	}
+	sendAt := time.Date(vietnamNow.Year(), vietnamNow.Month(), vietnamNow.Day(), hour, minute, 0, 0, vietnamNow.Location())
+	if vietnamNow.Before(sendAt) {
 		return false, today, nil
 	}
 	if lastSentDate == today {
@@ -141,7 +145,7 @@ func (s *DailyBookingReportService) getOverrideWindow(overrideDate *time.Time) (
 	return start.Format("2006-01-02"), start, end, nil
 }
 
-func (s *DailyBookingReportService) BuildPreview(now time.Time, overrideDate *time.Time, overrideRecipients []string) (*DailyBookingReportPreview, error) {
+func (s *DailyBookingReportService) BuildPreview(now time.Time, overrideDate *time.Time, overrideRecipients []string, recipientsCSV string) (*DailyBookingReportPreview, error) {
 	reportDate, start, end, err := s.GetReportWindow(now)
 	if err != nil {
 		return nil, err
@@ -153,7 +157,7 @@ func (s *DailyBookingReportService) BuildPreview(now time.Time, overrideDate *ti
 		}
 	}
 
-	sourceRecipients := GetConfig().DailyBookingReportRecipients
+	sourceRecipients := strings.Split(recipientsCSV, ",")
 	if len(overrideRecipients) > 0 {
 		sourceRecipients = overrideRecipients
 	}
@@ -208,16 +212,17 @@ func (s *DailyBookingReportService) Send(preview *DailyBookingReportPreview) err
 }
 
 func (s *DailyBookingReportService) RunIfDue(now time.Time) error {
-	if !GetConfig().DailyBookingReportEnabled {
-		return nil
+	cfg, err := LoadDailyBookingReportConfigForCron()
+	if err != nil || cfg == nil || !cfg.Enabled {
+		return err
 	}
 	lastSentDate, _ := GetSettingsRepository().GetGlobalString(SettingDailyBookingReportLastSentDate.Name)
-	shouldRun, today, err := s.ShouldRun(now, lastSentDate)
+	shouldRun, today, err := s.ShouldRun(now, lastSentDate, cfg.SendTime)
 	if err != nil || !shouldRun {
 		return err
 	}
 
-	preview, err := s.BuildPreview(now, nil, nil)
+	preview, err := s.BuildPreview(now, nil, nil, cfg.RecipientsCSV)
 	if err != nil {
 		return err
 	}

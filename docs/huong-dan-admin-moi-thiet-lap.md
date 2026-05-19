@@ -39,6 +39,16 @@ Tài liệu dành cho **Org Admin / Space Admin** lần đầu cấu hình tổ 
   - Ghế **chưa gán** Seat type: nếu giá trị này **0** hoặc không dùng, hệ thống có thể áp **fallback 30 phút** cho logic “còn book được / tối thiểu khi đặt” (đồng bộ với tài liệu [Hướng dẫn đặt chỗ và trạng thái ngày](./huong-dan-dat-cho-va-trang-thai-ngay.md)).
 - **Daily basis booking**, **Max days in advance**, v.v. — ảnh hưởng cách user chọn ngày và độ dài booking; admin nên đọc nhãn từng ô và lưu sau khi chỉnh.
 
+### Báo cáo booking hằng ngày (Daily booking report)
+
+Trên cùng trang **Settings** (`/admin/settings`):
+
+1. Bật **Enable daily booking report**.
+2. Nhập **Report recipients** — danh sách email, phân tách bằng dấu phẩy (ví dụ: `ops@company.com, manager@company.com`).
+3. Chọn **Report send time** — giờ gửi mỗi ngày theo múi giờ `Asia/Ho_Chi_Minh` (mặc định `08:00` nếu chưa đổi).
+4. Bấm **Save** ở cuối form.
+5. Dùng **Preview report** hoặc **Send test email** để kiểm tra nội dung **ngày hôm qua** (không cần cấu hình biến môi trường Docker/`server/.env` cho tính năng này).
+
 ---
 
 ## 3. Seat types (Loại ghế): tạo và chỉnh sửa
