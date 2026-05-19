@@ -8,6 +8,8 @@ import {
   XCircle as IconReset,
 } from "react-feather";
 import { NextRouter } from "next/router";
+import { AsyncTypeahead } from "react-bootstrap-typeahead";
+import "react-bootstrap-typeahead/css/Typeahead.css";
 import FullLayout from "@/components/FullLayout";
 import Link from "next/link";
 import Loading from "@/components/Loading";
@@ -16,6 +18,8 @@ import withReadyRouter from "@/components/withReadyRouter";
 import RuntimeConfig from "@/components/RuntimeConfig";
 import { TranslationFunc, withTranslation } from "@/components/withTranslation";
 import User from "@/types/User";
+import Group from "@/types/Group";
+import Search, { SearchOptions } from "@/types/Search";
 import Ajax from "@/util/Ajax";
 import OrgSettings from "@/types/Settings";
 import RedirectUtil from "@/util/RedirectUtil";
@@ -45,6 +49,9 @@ interface State {
   role: number;
   totpEnabled: boolean;
   hasPasskeys: boolean;
+  selectedGroups: Group[];
+  typeaheadGroupOptions: Group[];
+  typeaheadGroupsLoading: boolean;
 }
 
 interface Props {
@@ -82,6 +89,9 @@ class EditUser extends React.Component<Props, State> {
       role: User.UserRoleUser,
       totpEnabled: false,
       hasPasskeys: false,
+      selectedGroups: [],
+      typeaheadGroupOptions: [],
+      typeaheadGroupsLoading: false,
     };
   }
 
@@ -110,16 +120,19 @@ class EditUser extends React.Component<Props, State> {
       AuthProvider.list(),
     ];
     const { id } = this.props.router.query;
-    if (id && typeof id === "string" && id !== "add") {
+    const isEdit = id && typeof id === "string" && id !== "add";
+    if (isEdit) {
       promises.push(User.get(id));
+      promises.push(User.getGroups(id));
     }
     Promise.all(promises).then((values) => {
       this.usersMax = values[0] === "1" ? 1000000 : 10;
       this.usersCur = values[1];
       this.adminUserRole = values[2][0].role;
       this.authProviders = values[3];
-      if (values.length >= 5) {
+      if (isEdit) {
         let user = values[4];
+        let groups = values[5] as Group[];
         this.entity = user;
         // Determine auth method from user data
         let authMethod = "password";
@@ -141,6 +154,7 @@ class EditUser extends React.Component<Props, State> {
           role: user.role,
           totpEnabled: user.totpEnabled,
           hasPasskeys: user.hasPasskeys,
+          selectedGroups: groups,
         });
       }
       this.setState({
@@ -186,6 +200,16 @@ class EditUser extends React.Component<Props, State> {
 
     this.entity
       .save()
+      .then(() => {
+        const saveGroups =
+          this.entity.id && RuntimeConfig.INFOS.featureGroups
+            ? User.setGroups(
+                this.entity.id,
+                this.state.selectedGroups.map((g) => g.id),
+              )
+            : Promise.resolve();
+        return saveGroups;
+      })
       .then(() => {
         this.props.router.push("/admin/users/" + this.entity.id);
         this.setState({
@@ -235,6 +259,31 @@ class EditUser extends React.Component<Props, State> {
   generatePassword = () => {
     const password = Validation.generatePassword();
     this.setState({ password, changePassword: true });
+  };
+
+  filterGroupSearch = () => true;
+
+  handleGroupsSearch = (query: string) => {
+    this.setState({ typeaheadGroupsLoading: true });
+    const options = new SearchOptions();
+    options.includeGroups = true;
+    options.keyword = query ? query : "";
+    Search.search(options).then((res) => {
+      this.setState({
+        typeaheadGroupOptions: res.groups.map((g) => {
+          const group = new Group();
+          group.id = g.id;
+          group.name = g.name;
+          group.organizationId = g.organizationId;
+          return group;
+        }),
+        typeaheadGroupsLoading: false,
+      });
+    });
+  };
+
+  onGroupsSelected = (selected: Group[]) => {
+    this.setState({ selectedGroups: selected });
   };
 
   changeRole = (role: number) => {
@@ -464,6 +513,35 @@ class EditUser extends React.Component<Props, State> {
               />
             </Col>
           </Form.Group>
+          {this.entity.id && RuntimeConfig.INFOS.featureGroups && (
+            <Form.Group as={Row}>
+              <Form.Label htmlFor="search-user-groups" column sm="2">
+                {this.props.t("groups")}
+              </Form.Label>
+              <Col sm="4">
+                <AsyncTypeahead
+                  filterBy={this.filterGroupSearch}
+                  id="search-user-groups"
+                  inputProps={{ id: "search-user-groups" }}
+                  isLoading={this.state.typeaheadGroupsLoading}
+                  labelKey="name"
+                  multiple={true}
+                  minLength={3}
+                  onChange={this.onGroupsSelected}
+                  onSearch={this.handleGroupsSearch}
+                  options={this.state.typeaheadGroupOptions}
+                  selected={this.state.selectedGroups}
+                  placeholder={this.props.t("searchForGroup")}
+                  renderMenuItemChildren={(option: Group) => (
+                    <span>{option.name}</span>
+                  )}
+                />
+                <Form.Text className="text-muted">
+                  {this.props.t("userGroupsHint")}
+                </Form.Text>
+              </Col>
+            </Form.Group>
+          )}
           <Form.Group as={Row}>
             <Form.Label htmlFor="username" column sm="2">
               {this.props.t("username")}

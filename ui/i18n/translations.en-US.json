@@ -194,6 +194,7 @@
   "getStarted": "Get started",
   "gotoBooking": "Show Booking",
   "groups": "Groups",
+  "userGroupsHint": "User can belong to multiple groups. Removing a tag and saving removes the user from that group. Changes also appear on the group members list.",
   "hour12": "1",
   "hours": "hours",
   "imprint": "Imprint",

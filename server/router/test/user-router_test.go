@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -835,4 +836,90 @@ func TestAllowRoleChangeForOtherUser(t *testing.T) {
 	var resBody *GetUserResponse
 	json.Unmarshal(res.Body.Bytes(), &resBody)
 	CheckTestInt(t, int(UserRoleSpaceAdmin), resBody.Role)
+}
+
+func TestUserGroupsCRUD(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	GetSettingsRepository().Set(org.ID, SettingFeatureGroups.Name, "1")
+	admin := CreateTestUserOrgAdmin(org)
+	loginResponse := LoginTestUser(admin.ID)
+
+	target := CreateTestUserInOrg(org)
+
+	g1 := &Group{OrganizationID: org.ID, Name: "G1"}
+	g2 := &Group{OrganizationID: org.ID, Name: "G2"}
+	GetGroupRepository().Create(g1)
+	GetGroupRepository().Create(g2)
+
+	req := NewHTTPRequest("GET", "/user/"+target.ID+"/group", loginResponse.UserID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var emptyGroups []*GetGroupResponse
+	json.Unmarshal(res.Body.Bytes(), &emptyGroups)
+	CheckTestInt(t, 0, len(emptyGroups))
+
+	groupIDs, _ := json.Marshal([]string{g1.ID, g2.ID})
+	req = NewHTTPRequest("PUT", "/user/"+target.ID+"/group", loginResponse.UserID, bytes.NewBuffer(groupIDs))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	req = NewHTTPRequest("GET", "/user/"+target.ID+"/group", loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusOK, res.Code)
+	var resBody []*GetGroupResponse
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 2, len(resBody))
+
+	groupIDs, _ = json.Marshal([]string{g1.ID})
+	req = NewHTTPRequest("PUT", "/user/"+target.ID+"/group", loginResponse.UserID, bytes.NewBuffer(groupIDs))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	req = NewHTTPRequest("GET", "/user/"+target.ID+"/group", loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 1, len(resBody))
+	CheckTestString(t, g1.ID, resBody[0].ID)
+
+	memberIDs, _ := GetGroupRepository().GetMemberUserIDs(g2)
+	CheckTestBool(t, false, slices.Contains(memberIDs, target.ID))
+
+	groupIDs, _ = json.Marshal([]string{})
+	req = NewHTTPRequest("PUT", "/user/"+target.ID+"/group", loginResponse.UserID, bytes.NewBuffer(groupIDs))
+	res = ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusNoContent, res.Code)
+
+	req = NewHTTPRequest("GET", "/user/"+target.ID+"/group", loginResponse.UserID, nil)
+	res = ExecuteTestRequest(req)
+	json.Unmarshal(res.Body.Bytes(), &resBody)
+	CheckTestInt(t, 0, len(resBody))
+}
+
+func TestUserGroupsForbidden(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	regular := CreateTestUserInOrg(org)
+	target := CreateTestUserInOrg(org)
+
+	req := NewHTTPRequest("GET", "/user/"+target.ID+"/group", regular.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusForbidden, res.Code)
+}
+
+func TestUserGroupsForeignOrg(t *testing.T) {
+	ClearTestDB()
+	org1 := CreateTestOrg("test.com")
+	org2 := CreateTestOrg("test.com")
+	admin := CreateTestUserOrgAdmin(org1)
+	loginResponse := LoginTestUser(admin.ID)
+	target := CreateTestUserInOrg(org1)
+
+	foreignGroup := &Group{OrganizationID: org2.ID, Name: "Foreign"}
+	GetGroupRepository().Create(foreignGroup)
+
+	groupIDs, _ := json.Marshal([]string{foreignGroup.ID})
+	req := NewHTTPRequest("PUT", "/user/"+target.ID+"/group", loginResponse.UserID, bytes.NewBuffer(groupIDs))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
 }

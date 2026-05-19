@@ -144,6 +144,8 @@ func (router *UserRouter) SetupRoutes(s *mux.Router) {
 	s.HandleFunc("/totp/disable", router.disableTotp).Methods("POST")
 	s.HandleFunc("/{id}/passkeys", router.adminResetPasskeys).Methods("DELETE")
 	s.HandleFunc("/{id}/totp", router.adminResetTotp).Methods("DELETE")
+	s.HandleFunc("/{id}/group", router.getGroups).Methods("GET")
+	s.HandleFunc("/{id}/group", router.setGroups).Methods("PUT")
 	s.HandleFunc("/merge/init", router.mergeInit).Methods("POST")
 	s.HandleFunc("/merge/finish/{id}", router.mergeFinish).Methods("POST")
 	s.HandleFunc("/merge", router.getMergeRequests).Methods("GET")
@@ -201,6 +203,77 @@ func (router *UserRouter) adminResetTotp(w http.ResponseWriter, r *http.Request)
 	}
 	e.TotpSecret = NullString("")
 	if err := GetUserRepository().Update(e); err != nil {
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	SendUpdated(w)
+}
+
+func (router *UserRouter) getGroups(w http.ResponseWriter, r *http.Request) {
+	user := GetRequestUser(r)
+	if !CanAdminOrg(user, user.OrganizationID) {
+		SendForbidden(w)
+		return
+	}
+	vars := mux.Vars(r)
+	e, err := GetUserRepository().GetOne(vars["id"])
+	if err != nil {
+		SendNotFound(w)
+		return
+	}
+	if e.OrganizationID != user.OrganizationID {
+		SendForbidden(w)
+		return
+	}
+	groups, err := GetGroupRepository().GetAllWhereUserIsMember(e.ID)
+	if err != nil {
+		log.Println(err)
+		SendInternalServerError(w)
+		return
+	}
+	gr := &GroupRouter{}
+	res := []*GetGroupResponse{}
+	for _, g := range groups {
+		res = append(res, gr.copyToRestModel(g))
+	}
+	SendJSON(w, res)
+}
+
+func (router *UserRouter) setGroups(w http.ResponseWriter, r *http.Request) {
+	user := GetRequestUser(r)
+	if !CanAdminOrg(user, user.OrganizationID) {
+		SendForbidden(w)
+		return
+	}
+	vars := mux.Vars(r)
+	e, err := GetUserRepository().GetOne(vars["id"])
+	if err != nil {
+		SendNotFound(w)
+		return
+	}
+	if e.OrganizationID != user.OrganizationID {
+		SendForbidden(w)
+		return
+	}
+	var groupIDs []string
+	if UnmarshalBody(r, &groupIDs) != nil {
+		SendBadRequest(w)
+		return
+	}
+	if len(groupIDs) > 0 {
+		ok, err := GetGroupRepository().GroupsExistAndBelongToOrg(e.OrganizationID, groupIDs)
+		if err != nil {
+			log.Println(err)
+			SendInternalServerError(w)
+			return
+		}
+		if !ok {
+			SendBadRequest(w)
+			return
+		}
+	}
+	if err := GetGroupRepository().SetGroupsForUser(e.ID, groupIDs); err != nil {
 		log.Println(err)
 		SendInternalServerError(w)
 		return

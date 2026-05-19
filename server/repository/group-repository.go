@@ -247,3 +247,24 @@ func (r *GroupRepository) RemoveMembers(e *Group, userIDs []string) error {
 	_, err := GetDatabase().DB().Exec("DELETE FROM users_groups WHERE group_id = $1 AND user_id = ANY($2)", e.ID, pq.Array(userIDs))
 	return err
 }
+
+func (r *GroupRepository) SetGroupsForUser(userID string, groupIDs []string) error {
+	if _, err := GetDatabase().DB().Exec(
+		"DELETE FROM users_groups WHERE user_id = $1", userID); err != nil {
+		return err
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	sqlStr := "INSERT INTO users_groups (group_id, user_id) VALUES "
+	vals := []interface{}{}
+	i := 1
+	for _, groupID := range groupIDs {
+		sqlStr += fmt.Sprintf("($%d, $%d),", i, i+1)
+		i += 2
+		vals = append(vals, groupID, userID)
+	}
+	sqlStr = strings.TrimSuffix(sqlStr, ",")
+	_, err := GetDatabase().DB().Exec(sqlStr, vals...)
+	return err
+}

@@ -113,3 +113,38 @@ func TestGroupMembers(t *testing.T) {
 	CheckTestBool(t, false, slices.Contains(res2, u2.ID))
 	CheckTestBool(t, true, slices.Contains(res2, u3.ID))
 }
+
+func TestGroupSetGroupsForUser(t *testing.T) {
+	org := CreateTestOrg("test.com")
+
+	g1 := &Group{OrganizationID: org.ID, Name: "G1"}
+	g2 := &Group{OrganizationID: org.ID, Name: "G2"}
+	g3 := &Group{OrganizationID: org.ID, Name: "G3"}
+	GetGroupRepository().Create(g1)
+	GetGroupRepository().Create(g2)
+	GetGroupRepository().Create(g3)
+
+	u1 := CreateTestUserInOrg(org)
+
+	err := GetGroupRepository().AddMembers(g1, []string{u1.ID})
+	CheckTestBool(t, true, err == nil)
+	err = GetGroupRepository().AddMembers(g2, []string{u1.ID})
+	CheckTestBool(t, true, err == nil)
+
+	err = GetGroupRepository().SetGroupsForUser(u1.ID, []string{g2.ID, g3.ID})
+	CheckTestBool(t, true, err == nil)
+
+	groups, err := GetGroupRepository().GetAllWhereUserIsMember(u1.ID)
+	CheckTestBool(t, true, err == nil)
+	CheckTestInt(t, 2, len(groups))
+	ids := []string{groups[0].ID, groups[1].ID}
+	CheckTestBool(t, false, slices.Contains(ids, g1.ID))
+	CheckTestBool(t, true, slices.Contains(ids, g2.ID))
+	CheckTestBool(t, true, slices.Contains(ids, g3.ID))
+
+	err = GetGroupRepository().SetGroupsForUser(u1.ID, []string{})
+	CheckTestBool(t, true, err == nil)
+	groups, err = GetGroupRepository().GetAllWhereUserIsMember(u1.ID)
+	CheckTestBool(t, true, err == nil)
+	CheckTestInt(t, 0, len(groups))
+}

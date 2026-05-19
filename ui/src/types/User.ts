@@ -3,6 +3,7 @@ import Ajax from "../util/Ajax";
 import Organization from "./Organization";
 import MergeRequest from "./MergeRequest";
 import { BuddyBooking } from "./Buddy";
+import Group from "./Group";
 
 export default class User extends Entity {
   static UserRoleUser: number = 0;
@@ -222,6 +223,24 @@ export default class User extends Entity {
 
   static async adminResetPasskeys(userId: string): Promise<void> {
     return Ajax.delete("/user/" + userId + "/passkeys").then(() => undefined);
+  }
+
+  static async getGroups(userId: string): Promise<Group[]> {
+    return Ajax.get("/user/" + userId + "/group").then((result) => {
+      const list: Group[] = [];
+      (result.json as []).forEach((item) => {
+        const e = new Group();
+        e.deserialize(item);
+        list.push(e);
+      });
+      return list;
+    });
+  }
+
+  static async setGroups(userId: string, groupIds: string[]): Promise<void> {
+    return Ajax.putData("/user/" + userId + "/group", groupIds).then(
+      () => undefined,
+    );
   }
 
   static async adminResetTotp(userId: string): Promise<void> {
