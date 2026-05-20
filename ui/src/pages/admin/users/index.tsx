@@ -157,29 +157,31 @@ class Users extends React.Component<Props, State> {
     }
     return (
       <FullLayout headline={this.props.t("users")} buttons={buttons}>
-        <Table
-          striped={true}
-          hover={true}
-          className="clickable-table caption-top"
-          id="datatable"
-        >
-          <caption>
-            {this.props.t("numRecords")}: {rows.length}
-          </caption>
-          <thead>
-            <tr>
-              <th>{this.props.t("user")}</th>
-              <th>
-                {this.props.t("lastname")}, {this.props.t("firstname")}
-              </th>
-              <th>{this.props.t("role")}</th>
-              <th hidden={RuntimeConfig.INFOS.disablePasswordLogin}>
-                {this.props.t("loginMeans")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </Table>
+        <div className="table-responsive admin-table-scroll">
+          <Table
+            striped={true}
+            hover={true}
+            className="clickable-table caption-top"
+            id="datatable"
+          >
+            <caption>
+              {this.props.t("numRecords")}: {rows.length}
+            </caption>
+            <thead>
+              <tr>
+                <th>{this.props.t("user")}</th>
+                <th>
+                  {this.props.t("lastname")}, {this.props.t("firstname")}
+                </th>
+                <th>{this.props.t("role")}</th>
+                <th hidden={RuntimeConfig.INFOS.disablePasswordLogin}>
+                  {this.props.t("loginMeans")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+          </Table>
+        </div>
       </FullLayout>
     );
   }

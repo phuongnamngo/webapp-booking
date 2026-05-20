@@ -168,23 +168,25 @@ class Locations extends React.Component<Props, State> {
     }
     return (
       <FullLayout headline={this.props.t("areas")} buttons={buttons}>
-        <Table
-          striped={true}
-          hover={true}
-          className="clickable-table"
-          id="datatable"
-        >
-          <thead>
-            <tr>
-              <th>{this.props.t("name")}</th>
-              <th>{this.props.t("enabled")}</th>
-              <th>{this.props.t("map")}</th>
-              <th>{this.props.t("allowBookers")}</th>
-              <th>{this.props.t("bookingLink")}</th>
-            </tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </Table>
+        <div className="table-responsive admin-table-scroll">
+          <Table
+            striped={true}
+            hover={true}
+            className="clickable-table"
+            id="datatable"
+          >
+            <thead>
+              <tr>
+                <th>{this.props.t("name")}</th>
+                <th>{this.props.t("enabled")}</th>
+                <th>{this.props.t("map")}</th>
+                <th>{this.props.t("allowBookers")}</th>
+                <th>{this.props.t("bookingLink")}</th>
+              </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+          </Table>
+        </div>
       </FullLayout>
     );
   }
