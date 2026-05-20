@@ -965,8 +965,28 @@ func (router *BookingRouter) IsValidMaxUpcomingBookings(orgID string, user *User
 		return true
 	}
 	maxUpcoming, _ := GetSettingsRepository().GetInt(orgID, SettingMaxBookingsPerUser.Name)
-	curUpcoming, _ := GetBookingRepository().GetAllByUser(user.ID, time.Now().UTC())
-	return len(curUpcoming)+upcomingBookingsMarkup < maxUpcoming
+	// Match getAll: same SQL window, then filter by Leave vs location-adjusted "now"
+	// (GetAllByUser(..., time.Now().UTC()) alone disagrees with stored times + UI list).
+	startTime := time.Now().UTC().Add(time.Hour * -12)
+	curUpcoming, _ := GetBookingRepository().GetAllByUser(user.ID, startTime)
+	defaultTz, err := GetSettingsRepository().Get(user.OrganizationID, SettingDefaultTimezone.Name)
+	if err != nil {
+		defaultTz = "UTC"
+	}
+	nowAtOrg, _ := GetUTCNowInTimezone(defaultTz)
+	upcoming := 0
+	for _, e := range curUpcoming {
+		var nowAtLocation time.Time
+		if e.Space.Location.Timezone == "" {
+			nowAtLocation = nowAtOrg
+		} else {
+			nowAtLocation, _ = GetUTCNowInTimezone(e.Space.Location.Timezone)
+		}
+		if e.Leave.After(nowAtLocation) {
+			upcoming++
+		}
+	}
+	return upcoming+upcomingBookingsMarkup < maxUpcoming
 }
 
 func (router *BookingRouter) isValidMaxConcurrentBookingsForUser(orgID string, user *User, m *BookingRequest, bookingID string) bool {
