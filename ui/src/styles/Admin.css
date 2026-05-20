@@ -136,6 +136,12 @@ div#__next {
   cursor: pointer;
 }
 
+/* Horizontal scroll inside table on narrow viewports; avoid dragging the whole page */
+.admin-table-scroll {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+
 .table-striped > tbody > tr:nth-of-type(odd) > *, .table-striped-columns > :not(caption) > tr > :nth-child(2n){
   --bs-table-bg-type: #F3F6FA!important;
 }

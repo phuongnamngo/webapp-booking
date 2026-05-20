@@ -385,7 +385,7 @@ func (router *BookingRouter) getIcal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *BookingRouter) getICalFilename(calDavEvent *CalDAVEvent) string {
-	filename := fmt.Sprintf("seatsurfing-%s-%s.ics", calDavEvent.Start.Format("20060102"), calDavEvent.Start.Format("1504"))
+	filename := fmt.Sprintf("lnt-booking-%s-%s.ics", calDavEvent.Start.Format("20060102"), calDavEvent.Start.Format("1504"))
 	return filename
 }
 
