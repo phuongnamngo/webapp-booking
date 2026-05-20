@@ -173,10 +173,39 @@ func TestPreferencesCalDavListCalendarsInvalidBody(t *testing.T) {
 	org := CreateTestOrg("test.com")
 	user := CreateTestUserInOrg(org)
 
-	// Empty body → 400 (bad request) or 500 (CRYPT_KEY missing) or 404 (connection fails)
+	// Empty body with no Google OAuth configured → 400
 	req := NewHTTPRequest("POST", "/preference/caldav/listCalendars", user.ID, bytes.NewBufferString(`{}`))
 	res := ExecuteTestRequest(req)
-	if res.Code != http.StatusBadRequest && res.Code != http.StatusInternalServerError && res.Code != http.StatusNotFound {
-		t.Fatalf("Expected 400, 404 or 500, got %d", res.Code)
+	if res.Code != http.StatusBadRequest && res.Code != http.StatusInternalServerError {
+		t.Fatalf("Expected 400 or 500, got %d", res.Code)
 	}
+}
+
+func TestCalDavGoogleAuthURLRequiresAuth(t *testing.T) {
+	ClearTestDB()
+	req := NewHTTPRequest("GET", "/preference/caldav/google/auth-url", "", nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusUnauthorized, res.Code)
+}
+
+func TestCalDavGoogleAuthURLNoClientConfigured(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	req := NewHTTPRequest("GET", "/preference/caldav/google/auth-url", user.ID, nil)
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusServiceUnavailable, res.Code)
+}
+
+func TestCalDavListCalendarsGoogleNotConnected(t *testing.T) {
+	ClearTestDB()
+	org := CreateTestOrg("test.com")
+	user := CreateTestUserInOrg(org)
+
+	GetUserPreferencesRepository().Set(user.ID, PreferenceCalDAVProvider.Name, CalDAVProviderGoogle)
+
+	req := NewHTTPRequest("POST", "/preference/caldav/listCalendars", user.ID, bytes.NewBufferString(`{"provider":"google"}`))
+	res := ExecuteTestRequest(req)
+	CheckTestResponseCode(t, http.StatusBadRequest, res.Code)
 }

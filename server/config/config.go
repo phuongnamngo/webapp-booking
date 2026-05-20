@@ -37,6 +37,7 @@ type Config struct {
 	DailyBookingReportEnabled           bool
 	DailyBookingReportRecipients        []string
 	Development                         bool
+	DevUiProxyBackend                   string // host:port for Next.js in DEV (e.g. localhost:3003)
 	InitOrgName                         string
 	InitOrgUser                         string
 	InitOrgPass                         string
@@ -58,6 +59,8 @@ type Config struct {
 	DNSServer                           string // DNS server address for custom resolver
 	DisablePasswordLogin                bool   // Disable password login for all users (only allow OAuth2 and SSO)
 	CORSOrigins                         []string
+	GoogleCalDAVClientID                string
+	GoogleCalDAVClientSecret            string
 	RateLimit                           int
 	RateLimitPeriod                     string // e.g., "1-M" for 1 minute
 	MaxSessionsPerUser                  int    // Maximum number of concurrent sessions per user
@@ -79,6 +82,7 @@ func GetConfig() *Config {
 func (c *Config) ReadConfig() {
 	log.Println("Reading config …")
 	c.Development = (c.getEnv("DEV", "0") == "1")
+	c.DevUiProxyBackend = c.getEnv("DEV_UI_PROXY", "localhost:3000")
 	c.PublicListenAddr = c.getEnv("PUBLIC_LISTEN_ADDR", "0.0.0.0:8080")
 	c.StaticUiPath = strings.TrimSuffix(c.getEnv("STATIC_UI_PATH", "/app/ui"), "/") + "/"
 	c.PostgresURL = c.getEnv("POSTGRES_URL", "postgres://postgres:root@localhost/seatsurfing?sslmode=disable")
@@ -140,6 +144,8 @@ func (c *Config) ReadConfig() {
 	if c.CryptKey == "" || len(c.CryptKey) != 32 {
 		log.Println("Warning: No valid CRYPT_KEY set. Set it to a 32 bytes long string in order to use features such as CalDAV integration.")
 	}
+	c.GoogleCalDAVClientID = c.getEnv("GOOGLE_CALDAV_CLIENT_ID", "")
+	c.GoogleCalDAVClientSecret = c.getEnv("GOOGLE_CALDAV_CLIENT_SECRET", "")
 	pwd, _ := os.Getwd()
 	c.FilesystemBasePath = c.getEnv("FILESYSTEM_BASE_PATH", pwd)
 	c.PluginsSubPath = c.getEnv("PLUGINS_SUB_PATH", "plugins")
@@ -166,6 +172,10 @@ func (c *Config) ReadConfig() {
 	}
 	if c.Development && !slices.Contains(c.CORSOrigins, "http://localhost:3000") {
 		c.CORSOrigins = append(c.CORSOrigins, "http://localhost:3000")
+	}
+	devOrigin := "http://" + c.DevUiProxyBackend
+	if c.Development && c.DevUiProxyBackend != "" && !slices.Contains(c.CORSOrigins, devOrigin) {
+		c.CORSOrigins = append(c.CORSOrigins, devOrigin)
 	}
 	c.RateLimit = c.getEnvInt("RATE_LIMIT", 250)
 	c.RateLimitPeriod = c.getEnv("RATE_LIMIT_PERIOD", "1-M")

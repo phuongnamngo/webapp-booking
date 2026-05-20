@@ -23,6 +23,7 @@ const (
 	AuthPasskeyRegistration  AuthStateType = 10 // used for WebAuthn passkey registration ceremony
 	AuthPasskeyLogin         AuthStateType = 11 // used for WebAuthn passkey authentication ceremony
 	AuthPasskey2FA           AuthStateType = 12 // used for WebAuthn passkey as second factor after password login
+	AuthCalDAVGoogleOAuth    AuthStateType = 13 // Google Calendar CalDAV OAuth connect flow
 )
 
 type AuthState struct {

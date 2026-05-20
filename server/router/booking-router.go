@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/emersion/go-ical"
 	"github.com/gorilla/mux"
+	"golang.org/x/oauth2"
 
 	. "github.com/seatsurfing/seatsurfing/server/api"
 	. "github.com/seatsurfing/seatsurfing/server/repository"
@@ -97,10 +99,14 @@ type SetBookingApprovalRequest struct {
 }
 
 type CaldavConfig struct {
-	URL      string
-	Username string
-	Password string
-	Path     string
+	Provider     string
+	URL          string
+	Username     string
+	Password     string
+	Path         string
+	RefreshToken string
+	GoogleEmail  string
+	PublicBase   string
 }
 
 func (router *BookingRouter) SetupRoutes(s *mux.Router) {
@@ -1286,7 +1292,9 @@ func (router *BookingRouter) getCalDavConfig(userID string) (*CaldavConfig, erro
 	}
 	res := &CaldavConfig{}
 	for _, pref := range prefs {
-		if pref.Name == PreferenceCalDAVURL.Name {
+		if pref.Name == PreferenceCalDAVProvider.Name && len(pref.Value) > 0 {
+			res.Provider = pref.Value
+		} else if pref.Name == PreferenceCalDAVURL.Name {
 			if _, err := url.ParseRequestURI(pref.Value); err == nil {
 				res.URL = pref.Value
 			}
@@ -1303,7 +1311,41 @@ func (router *BookingRouter) getCalDavConfig(userID string) (*CaldavConfig, erro
 			}
 		} else if pref.Name == PreferenceCalDAVPath.Name && len(pref.Value) > 0 {
 			res.Path = pref.Value
+		} else if pref.Name == PreferenceCalDAVOAuthRefresh.Name && len(pref.Value) > 0 {
+			decryptedRefresh, err := DecryptString(pref.Value)
+			if err != nil {
+				log.Println("Error decrypting CalDAV refresh token for user " + userID + ": " + err.Error())
+				continue
+			}
+			if decryptedRefresh != "" {
+				res.RefreshToken = decryptedRefresh
+			}
+		} else if pref.Name == PreferenceCalDAVGoogleEmail.Name && len(pref.Value) > 0 {
+			res.GoogleEmail = pref.Value
 		}
+	}
+	if res.Provider == "" {
+		res.Provider = CalDAVProviderGeneric
+	}
+	if res.Provider == CalDAVProviderGoogle {
+		user, err := GetUserRepository().GetOne(userID)
+		if err != nil || user == nil {
+			return nil, errors.New("caldav user not found")
+		}
+		org, err := GetOrganizationRepository().GetOne(user.OrganizationID)
+		if err != nil || org == nil {
+			return nil, errors.New("caldav org not found")
+		}
+		domain, err := GetOrganizationRepository().GetPrimaryDomain(org)
+		if err != nil || domain == nil {
+			return nil, errors.New("caldav domain not found")
+		}
+		res.PublicBase = FormatURL(domain.DomainName)
+		res.URL = GoogleCalDAVPrincipalURL(res.GoogleEmail)
+		if res.RefreshToken == "" || res.GoogleEmail == "" || res.Path == "" {
+			return nil, errors.New("caldav not configured completely")
+		}
+		return res, nil
 	}
 	if res.URL == "" || res.Username == "" || res.Password == "" || res.Path == "" {
 		return nil, errors.New("caldav not configured completely")
@@ -1317,7 +1359,15 @@ func (router *BookingRouter) initCaldavEvent(e *Booking) (*CalDAVClient, *CalDAV
 		return nil, nil, "", err
 	}
 	caldavClient := &CalDAVClient{}
-	if err := caldavClient.Connect(config.URL, config.Username, config.Password); err != nil {
+	if config.Provider == CalDAVProviderGoogle {
+		oauthCfg := NewGoogleCalDAVOAuthConfig(GoogleCalDAVRedirectURL(config.PublicBase))
+		token := &oauth2.Token{RefreshToken: config.RefreshToken}
+		tokenSource := oauthCfg.TokenSource(context.Background(), token)
+		if err := caldavClient.ConnectWithTokenSource(config.URL, tokenSource); err != nil {
+			log.Println(err)
+			return nil, nil, "", err
+		}
+	} else if err := caldavClient.Connect(config.URL, config.Username, config.Password); err != nil {
 		log.Println(err)
 		return nil, nil, "", err
 	}

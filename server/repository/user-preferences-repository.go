@@ -37,10 +37,18 @@ var (
 	PreferenceCalDAVUser            PreferenceName = PreferenceName{Name: "caldav_user", Type: SettingTypeString}
 	PreferenceCalDAVPass            PreferenceName = PreferenceName{Name: "caldav_pass", Type: SettingTypeEncryptedString}
 	PreferenceCalDAVPath            PreferenceName = PreferenceName{Name: "caldav_path", Type: SettingTypeString}
+	PreferenceCalDAVProvider        PreferenceName = PreferenceName{Name: "caldav_provider", Type: SettingTypeString}
+	PreferenceCalDAVOAuthRefresh    PreferenceName = PreferenceName{Name: "caldav_oauth_refresh", Type: SettingTypeEncryptedString}
+	PreferenceCalDAVGoogleEmail     PreferenceName = PreferenceName{Name: "caldav_google_email", Type: SettingTypeString}
 	PreferenceMailNotifications     PreferenceName = PreferenceName{Name: "mail_notifications", Type: SettingTypeBool}
 	PreferenceDateFormat            PreferenceName = PreferenceName{Name: "date_format", Type: SettingTypeString}
 	PreferenceApprovalNotifications PreferenceName = PreferenceName{Name: "approval_notifications", Type: SettingTypeBool}
 	Preference24HourTime            PreferenceName = PreferenceName{Name: "use_24_hour_time", Type: SettingTypeBool}
+)
+
+const (
+	CalDAVProviderGoogle  = "google"
+	CalDAVProviderGeneric = "generic"
 )
 
 var (

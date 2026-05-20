@@ -1550,15 +1550,21 @@ components:
     # --- CalDAV ---
     ListCaldavCalendarsRequest:
       type: object
-      required: [url, username, password]
       properties:
+        provider:
+          type: string
+          enum: [google, generic]
+          description: CalDAV provider. Defaults to saved user preference or generic.
         url:
           type: string
           format: uri
+          description: Required for generic provider.
         username:
           type: string
+          description: Required for generic provider.
         password:
           type: string
+          description: Required for generic provider.
 
     ListCaldavCalendarsResponse:
       type: object
@@ -5366,8 +5372,58 @@ paths:
                   $ref: "#/components/schemas/ListCaldavCalendarsResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
+        "502":
           description: Could not connect to CalDAV server
+
+  /preference/caldav/google/auth-url:
+    get:
+      tags: [User Preferences]
+      summary: Start Google Calendar OAuth
+      description: Returns a Google OAuth authorization URL for CalDAV (calendar + user email for principal URL).
+      operationId: caldavGoogleAuthURL
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Authorization URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Google CalDAV OAuth is not configured on the server
+
+  /preference/caldav/google/callback:
+    get:
+      tags: [User Preferences]
+      summary: Google Calendar OAuth callback
+      description: OAuth redirect target. Exchanges authorization code for tokens and redirects to preferences.
+      operationId: caldavGoogleCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to UI preferences after successful connect
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          description: Failed to fetch Google account info
 
   # ===========================
   # Statistics
