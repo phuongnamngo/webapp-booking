@@ -1213,9 +1213,6 @@ class Preferences extends React.Component<Props, State> {
                   </>
                 ) : (
                   <>
-                    <Alert variant="info" className="preferences-alert">
-                      {this.props.t("caldavGenericDeprecated")}
-                    </Alert>
                     <Form.Group className="preferences-field">
                       <Form.Label htmlFor="caldavUrl">
                         {this.props.t("caldavUrl")}
