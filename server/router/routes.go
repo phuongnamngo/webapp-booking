@@ -132,6 +132,14 @@ func SendInternalServerError(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
+func SendBadGateway(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusBadGateway)
+}
+
+func SendServiceUnavailable(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusServiceUnavailable)
+}
+
 func SendJSON(w http.ResponseWriter, v interface{}) {
 	json, err := json.Marshal(v)
 	if err != nil {

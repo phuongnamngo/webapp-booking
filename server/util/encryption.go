@@ -5,6 +5,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"io"
 
 	. "github.com/seatsurfing/seatsurfing/server/config"
@@ -36,18 +38,30 @@ func EncryptString(s string) (string, error) {
 }
 
 func DecryptString(s string) (string, error) {
-	ciphertext, _ := base64.StdEncoding.Strict().DecodeString(s)
-	aes, err := aes.NewCipher([]byte(GetConfig().CryptKey))
+	if s == "" {
+		return "", nil
+	}
+	ciphertext, err := base64.StdEncoding.Strict().DecodeString(s)
 	if err != nil {
 		return "", err
 	}
-	gcm, err := cipher.NewGCM(aes)
+	block, err := aes.NewCipher([]byte(GetConfig().CryptKey))
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
 	nonceSize := gcm.NonceSize()
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := gcm.Open(nil, []byte(nonce), []byte(ciphertext), nil)
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short: %d bytes", len(ciphertext))
+	}
+	nonce, payload := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	if len(payload) == 0 {
+		return "", errors.New("ciphertext missing sealed data")
+	}
+	plaintext, err := gcm.Open(nil, nonce, payload, nil)
 	if err != nil {
 		return "", err
 	}

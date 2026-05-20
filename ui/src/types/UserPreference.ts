@@ -18,6 +18,10 @@ export default class UserPreference extends Entity {
   static readonly PREF_CALDAV_USER = "caldav_user";
   static readonly PREF_CALDAV_PASS = "caldav_pass";
   static readonly PREF_CALDAV_PATH = "caldav_path";
+  static readonly PREF_CALDAV_PROVIDER = "caldav_provider";
+  static readonly PREF_CALDAV_GOOGLE_EMAIL = "caldav_google_email";
+  static readonly CALDAV_PROVIDER_GOOGLE = "google";
+  static readonly CALDAV_PROVIDER_GENERIC = "generic";
   static readonly PREF_MAIL_NOTIFICATIONS = "mail_notifications";
   static readonly PREF_USE_24_HOUR_TIME = "use_24_hour_time";
   static readonly PREF_DATE_FORMAT = "date_format";

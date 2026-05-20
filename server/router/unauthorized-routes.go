@@ -17,6 +17,7 @@ var unauthorizedRoutes = []string{
 	"/booking/debugtimeissues/",
 	"/robots.txt",
 	"/healthcheck/",
+	"/preference/caldav/google/callback",
 }
 
 var unauthorizedRoutesOnce sync.Once

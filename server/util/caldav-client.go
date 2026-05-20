@@ -12,6 +12,7 @@ import (
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
+	"golang.org/x/oauth2"
 )
 
 type CalDAVClient struct {
@@ -37,6 +38,33 @@ type CalDAVEvent struct {
 
 func (c *CalDAVClient) Connect(url, username, password string) error {
 	httpClient := webdav.HTTPClientWithBasicAuth(http.DefaultClient, username, password)
+	caldavClient, err := caldav.NewClient(httpClient, url)
+	if err != nil {
+		return err
+	}
+	principal, err := caldavClient.FindCurrentUserPrincipal(context.Background())
+	if err != nil {
+		return err
+	}
+	homeSet, err := caldavClient.FindCalendarHomeSet(context.Background(), principal)
+	if err != nil {
+		return err
+	}
+	c.url = url
+	c.client = caldavClient
+	c.httpClient = httpClient
+	c.principal = principal
+	c.homeSet = homeSet
+	return nil
+}
+
+func (c *CalDAVClient) ConnectWithTokenSource(url string, src oauth2.TokenSource) error {
+	httpClient := &http.Client{
+		Transport: &oauth2.Transport{
+			Source: src,
+			Base:   http.DefaultTransport,
+		},
+	}
 	caldavClient, err := caldav.NewClient(httpClient, url)
 	if err != nil {
 		return err

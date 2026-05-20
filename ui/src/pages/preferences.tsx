@@ -47,6 +47,11 @@ interface State {
   caldavCalendars: any[];
   caldavCalendarsLoaded: boolean;
   caldavError: boolean;
+  caldavProvider: string;
+  caldavGoogleEmail: string;
+  caldavLegacyGoogleReconnect: boolean;
+  /** OAuth callback error code from `caldav_oauth_error` query (server redirect). */
+  caldavOAuthError: string | null;
   mailNotifications: boolean;
   use24HourTime: boolean;
   dateFormat: string;
@@ -99,6 +104,10 @@ class Preferences extends React.Component<Props, State> {
       caldavCalendars: [],
       caldavCalendarsLoaded: false,
       caldavError: false,
+      caldavProvider: UserPreference.CALDAV_PROVIDER_GOOGLE,
+      caldavGoogleEmail: "",
+      caldavLegacyGoogleReconnect: false,
+      caldavOAuthError: null,
       mailNotifications: false,
       use24HourTime: true,
       dateFormat: "Y-m-d",
@@ -117,14 +126,66 @@ class Preferences extends React.Component<Props, State> {
     if (tabParam === "security") {
       this.setState({ activeTab: "tab-security" });
     }
+    if (tabParam === "integrations") {
+      this.setState({ activeTab: "tab-integrations" });
+    }
     const promises = [
       this.loadPreferences(),
       this.loadLocations(),
       this.loadActiveSessions(),
     ];
     Promise.all(promises).then(() => {
-      this.setState({ loading: false });
+      this.setState({ loading: false }, () => {
+        const q = this.props.router.query;
+        const oauthErrRaw = q.caldav_oauth_error;
+        const cleanIntegrationsUrl = () => {
+          void this.props.router.replace(
+            {
+              pathname: this.props.router.pathname,
+              query: { tab: "integrations" },
+            },
+            undefined,
+            { shallow: true },
+          );
+        };
+        if (oauthErrRaw) {
+          const code = Array.isArray(oauthErrRaw)
+            ? oauthErrRaw[0]
+            : oauthErrRaw;
+          this.setState({
+            activeTab: "tab-integrations",
+            caldavOAuthError: code || null,
+          });
+          cleanIntegrationsUrl();
+          return;
+        }
+        if (q.caldav === "connected") {
+          this.setState({ activeTab: "tab-integrations" });
+          this.loadPreferences().then(() => {
+            this.listGoogleCalDavCalendars();
+            cleanIntegrationsUrl();
+          });
+        }
+      });
     });
+  };
+
+  getCaldavOAuthErrorMessage = (code: string): string => {
+    const keys: Record<string, string> = {
+      access_denied: "caldavOAuthErrorAccessDenied",
+      invalid_state: "caldavOAuthErrorInvalidState",
+      missing_code: "caldavOAuthErrorMissingCode",
+      token_exchange: "caldavOAuthErrorTokenExchange",
+      no_refresh_token: "caldavOAuthErrorNoRefreshToken",
+      userinfo: "caldavOAuthErrorUserinfo",
+      crypt_key: "caldavOAuthErrorCryptKey",
+      not_configured: "caldavOAuthErrorNotConfigured",
+      server: "caldavOAuthErrorServer",
+    };
+    const k = keys[code] ?? "caldavOAuthErrorUnknown";
+    return k === "caldavOAuthErrorUnknown"
+      ? this.props.t(k, { code })
+      : this.props.t(k);
   };
 
   loadActiveSessions = async (): Promise<void> => {
@@ -189,6 +250,11 @@ class Preferences extends React.Component<Props, State> {
               state.caldavPass = s.value;
             if (s.name === UserPreference.PREF_CALDAV_PATH)
               state.caldavCalendar = s.value;
+            if (s.name === UserPreference.PREF_CALDAV_PROVIDER)
+              state.caldavProvider =
+                s.value || UserPreference.CALDAV_PROVIDER_GOOGLE;
+            if (s.name === UserPreference.PREF_CALDAV_GOOGLE_EMAIL)
+              state.caldavGoogleEmail = s.value;
             if (s.name === UserPreference.PREF_MAIL_NOTIFICATIONS)
               state.mailNotifications = s.value === "1";
             if (s.name === UserPreference.PREF_USE_24_HOUR_TIME)
@@ -196,6 +262,12 @@ class Preferences extends React.Component<Props, State> {
             if (s.name === UserPreference.PREF_DATE_FORMAT)
               state.dateFormat = s.value;
           });
+          state.caldavLegacyGoogleReconnect =
+            ((state.caldavUrl as string) || "").includes(
+              "googleusercontent.com",
+            ) &&
+            !(state.caldavGoogleEmail as string) &&
+            !!(state.caldavPass as string);
           self.setState(
             {
               ...self.state,
@@ -343,6 +415,54 @@ class Preferences extends React.Component<Props, State> {
     });
   };
 
+  listGoogleCalDavCalendars = () => {
+    this.setState({
+      submitting: true,
+      saved: false,
+      error: false,
+      caldavError: false,
+      caldavCalendarsLoaded: false,
+    });
+    Ajax.postData("/preference/caldav/listCalendars", {
+      provider: UserPreference.CALDAV_PROVIDER_GOOGLE,
+    })
+      .then((res) => {
+        this.setState({
+          caldavCalendarsLoaded: true,
+          caldavCalendars: res.json,
+          caldavCalendar:
+            res.json && res.json.length > 0
+              ? res.json[0].path
+              : this.state.caldavCalendar,
+          submitting: false,
+        });
+      })
+      .catch(() => {
+        this.setState({
+          submitting: false,
+          caldavError: true,
+        });
+      });
+  };
+
+  connectGoogleCalDav = () => {
+    this.setState({
+      caldavError: false,
+      error: false,
+    });
+    Ajax.get("/preference/caldav/google/auth-url")
+      .then((res) => {
+        if (res.json && res.json.url) {
+          window.location.href = res.json.url;
+        } else {
+          this.setState({ caldavError: true });
+        }
+      })
+      .catch(() => {
+        this.setState({ caldavError: true });
+      });
+  };
+
   connectCalDav = () => {
     this.setState({
       submitting: true,
@@ -352,6 +472,7 @@ class Preferences extends React.Component<Props, State> {
       caldavCalendarsLoaded: false,
     });
     const payload = {
+      provider: UserPreference.CALDAV_PROVIDER_GENERIC,
       url: this.state.caldavUrl,
       username: this.state.caldavUser,
       password: this.state.caldavPass,
@@ -383,6 +504,9 @@ class Preferences extends React.Component<Props, State> {
       caldavCalendarsLoaded: false,
     });
     const payload = [
+      new UserPreference("caldav_provider", ""),
+      new UserPreference("caldav_oauth_refresh", ""),
+      new UserPreference("caldav_google_email", ""),
       new UserPreference("caldav_url", ""),
       new UserPreference("caldav_user", ""),
       new UserPreference("caldav_pass", ""),
@@ -393,11 +517,14 @@ class Preferences extends React.Component<Props, State> {
         this.setState({
           submitting: false,
           saved: true,
+          caldavProvider: UserPreference.CALDAV_PROVIDER_GOOGLE,
+          caldavGoogleEmail: "",
           caldavUrl: "",
           caldavUser: "",
           caldavPass: "",
           caldavCalendar: "",
           caldavCalendars: [],
+          caldavLegacyGoogleReconnect: false,
         });
       })
       .catch(() => {
@@ -417,11 +544,19 @@ class Preferences extends React.Component<Props, State> {
       caldavError: false,
     });
     const payload = [
-      new UserPreference("caldav_url", this.state.caldavUrl),
-      new UserPreference("caldav_user", this.state.caldavUser),
-      new UserPreference("caldav_pass", this.state.caldavPass),
+      new UserPreference(
+        "caldav_provider",
+        this.state.caldavProvider,
+      ),
       new UserPreference("caldav_path", this.state.caldavCalendar),
     ];
+    if (this.state.caldavProvider === UserPreference.CALDAV_PROVIDER_GENERIC) {
+      payload.push(
+        new UserPreference("caldav_url", this.state.caldavUrl),
+        new UserPreference("caldav_user", this.state.caldavUser),
+        new UserPreference("caldav_pass", this.state.caldavPass),
+      );
+    }
     UserPreference.setAll(payload)
       .then(() => {
         this.setState({
@@ -982,54 +1117,171 @@ class Preferences extends React.Component<Props, State> {
                 <h3 className="preferences-section-title">
                   {this.props.t("caldavCalendar")}
                 </h3>
-                <Form.Group className="preferences-field">
-                  <Form.Label htmlFor="caldavUrl">
-                    {this.props.t("caldavUrl")}
-                  </Form.Label>
-                  <Form.Control
-                    id="caldavUrl"
-                    type="url"
-                    value={this.state.caldavUrl}
-                    onChange={(e: any) =>
-                      this.setState({
-                        caldavUrl: e.target.value,
-                        caldavCalendarsLoaded: false,
-                      })
+                {this.state.caldavOAuthError ? (
+                  <Alert
+                    variant="danger"
+                    className="preferences-alert"
+                    dismissible
+                    onClose={() =>
+                      this.setState({ caldavOAuthError: null })
                     }
-                  />
-                </Form.Group>
+                  >
+                    {this.getCaldavOAuthErrorMessage(
+                      this.state.caldavOAuthError,
+                    )}
+                  </Alert>
+                ) : null}
+                {this.state.caldavLegacyGoogleReconnect ? (
+                  <Alert variant="warning" className="preferences-alert">
+                    {this.props.t("caldavReconnectGoogle")}
+                  </Alert>
+                ) : null}
                 <Form.Group className="preferences-field">
-                  <Form.Label htmlFor="caldavUser">
-                    {this.props.t("username")}
-                  </Form.Label>
-                  <Form.Control
-                    id="caldavUser"
-                    type="text"
-                    value={this.state.caldavUser}
-                    onChange={(e: any) =>
-                      this.setState({
-                        caldavUser: e.target.value,
-                        caldavCalendarsLoaded: false,
-                      })
-                    }
-                  />
+                  <Form.Label>{this.props.t("caldavCalendar")}</Form.Label>
+                  <div>
+                    <Form.Check
+                      inline
+                      type="radio"
+                      id="caldavProviderGoogle"
+                      label={this.props.t("caldavProviderGoogle")}
+                      name="caldavProvider"
+                      checked={
+                        this.state.caldavProvider ===
+                        UserPreference.CALDAV_PROVIDER_GOOGLE
+                      }
+                      onChange={() =>
+                        this.setState({
+                          caldavProvider: UserPreference.CALDAV_PROVIDER_GOOGLE,
+                          caldavCalendarsLoaded: false,
+                          caldavCalendars: [],
+                        })
+                      }
+                    />
+                    <Form.Check
+                      inline
+                      type="radio"
+                      id="caldavProviderGeneric"
+                      label={this.props.t("caldavProviderGeneric")}
+                      name="caldavProvider"
+                      checked={
+                        this.state.caldavProvider ===
+                        UserPreference.CALDAV_PROVIDER_GENERIC
+                      }
+                      onChange={() =>
+                        this.setState({
+                          caldavProvider:
+                            UserPreference.CALDAV_PROVIDER_GENERIC,
+                          caldavCalendarsLoaded: false,
+                          caldavCalendars: [],
+                        })
+                      }
+                    />
+                  </div>
                 </Form.Group>
-                <Form.Group className="preferences-field">
-                  <Form.Label htmlFor="caldavPass">
-                    {this.props.t("password")}
-                  </Form.Label>
-                  <Form.Control
-                    id="caldavPass"
-                    type="password"
-                    value={this.state.caldavPass}
-                    onChange={(e: any) =>
-                      this.setState({
-                        caldavPass: e.target.value,
-                        caldavCalendarsLoaded: false,
-                      })
-                    }
-                  />
-                </Form.Group>
+                {this.state.caldavProvider ===
+                UserPreference.CALDAV_PROVIDER_GOOGLE ? (
+                  <>
+                    <p className="preferences-footnote">
+                      {this.state.caldavGoogleEmail
+                        ? this.props.t("caldavConnectedAs", {
+                            email: this.state.caldavGoogleEmail,
+                          })
+                        : this.props.t("caldavNotConnected")}
+                    </p>
+                    <div className="preferences-btn-row mb-3">
+                      <Button
+                        type="button"
+                        className="preferences-btn-neutral"
+                        variant="dark"
+                        disabled={this.state.submitting}
+                        onClick={() => this.connectGoogleCalDav()}
+                      >
+                        {this.props.t("caldavConnectGoogle")}
+                      </Button>
+                      {this.state.caldavGoogleEmail ? (
+                        <Button
+                          type="button"
+                          className="preferences-btn-neutral"
+                          variant="dark"
+                          disabled={this.state.submitting}
+                          onClick={() => this.listGoogleCalDavCalendars()}
+                        >
+                          {this.props.t("connect")}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Alert variant="info" className="preferences-alert">
+                      {this.props.t("caldavGenericDeprecated")}
+                    </Alert>
+                    <Form.Group className="preferences-field">
+                      <Form.Label htmlFor="caldavUrl">
+                        {this.props.t("caldavUrl")}
+                      </Form.Label>
+                      <Form.Control
+                        id="caldavUrl"
+                        type="url"
+                        value={this.state.caldavUrl}
+                        onChange={(e: any) =>
+                          this.setState({
+                            caldavUrl: e.target.value,
+                            caldavCalendarsLoaded: false,
+                          })
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="preferences-field">
+                      <Form.Label htmlFor="caldavUser">
+                        {this.props.t("username")}
+                      </Form.Label>
+                      <Form.Control
+                        id="caldavUser"
+                        type="text"
+                        value={this.state.caldavUser}
+                        onChange={(e: any) =>
+                          this.setState({
+                            caldavUser: e.target.value,
+                            caldavCalendarsLoaded: false,
+                          })
+                        }
+                      />
+                    </Form.Group>
+                    <Form.Group className="preferences-field">
+                      <Form.Label htmlFor="caldavPass">
+                        {this.props.t("password")}
+                      </Form.Label>
+                      <Form.Control
+                        id="caldavPass"
+                        type="password"
+                        value={this.state.caldavPass}
+                        onChange={(e: any) =>
+                          this.setState({
+                            caldavPass: e.target.value,
+                            caldavCalendarsLoaded: false,
+                          })
+                        }
+                      />
+                    </Form.Group>
+                    <div className="preferences-btn-row mb-3">
+                      <Button
+                        type="button"
+                        className="preferences-btn-neutral"
+                        variant="dark"
+                        disabled={
+                          this.state.submitting ||
+                          this.state.caldavUrl === "" ||
+                          this.state.caldavUser === "" ||
+                          this.state.caldavPass === ""
+                        }
+                        onClick={() => this.connectCalDav()}
+                      >
+                        {this.props.t("connect")}
+                      </Button>
+                    </div>
+                  </>
+                )}
                 <Form.Group className="preferences-field">
                   <Form.Label htmlFor="caldavCalendar">
                     {this.props.t("calendar")}
@@ -1057,23 +1309,14 @@ class Preferences extends React.Component<Props, State> {
                     variant="dark"
                     disabled={
                       this.state.submitting ||
-                      this.state.caldavUrl === "" ||
-                      this.state.caldavUser === "" ||
-                      this.state.caldavPass === ""
-                    }
-                    onClick={() => this.connectCalDav()}
-                  >
-                    {this.props.t("connect")}
-                  </Button>
-                  <Button
-                    type="button"
-                    className="preferences-btn-neutral"
-                    variant="dark"
-                    disabled={
-                      this.state.submitting ||
-                      this.state.caldavUrl === "" ||
-                      this.state.caldavUser === "" ||
-                      this.state.caldavPass === "" ||
+                      (this.state.caldavProvider ===
+                        UserPreference.CALDAV_PROVIDER_GENERIC &&
+                        (this.state.caldavUrl === "" ||
+                          this.state.caldavUser === "" ||
+                          this.state.caldavPass === "")) ||
+                      (this.state.caldavProvider ===
+                        UserPreference.CALDAV_PROVIDER_GOOGLE &&
+                        !this.state.caldavGoogleEmail) ||
                       this.state.caldavCalendar === ""
                     }
                     onClick={() => this.disconnectCalDav()}
