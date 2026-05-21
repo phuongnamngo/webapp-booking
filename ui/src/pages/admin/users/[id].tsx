@@ -27,6 +27,7 @@ import AuthProvider from "@/types/AuthProvider";
 import ErrorText from "@/types/ErrorText";
 import AjaxError from "@/util/AjaxError";
 import Validation from "@/util/Validation";
+import RendererUtils from "@/util/RendererUtils";
 
 interface State {
   loading: boolean;
@@ -108,6 +109,14 @@ class EditUser extends React.Component<Props, State> {
       role === User.UserRoleServiceAccountRO ||
       role === User.UserRoleServiceAccountRW
     );
+  };
+
+  /** Service accounts: API Basic Auth identifier (stored as email). Others: display only. */
+  getUsernameFieldValue = () => {
+    if (this.isServiceAccount(this.state.role)) {
+      return this.state.email;
+    }
+    return RendererUtils.fullname(this.state.firstname, this.state.lastname);
   };
 
   loadData = () => {
@@ -552,7 +561,7 @@ class EditUser extends React.Component<Props, State> {
                   id="username"
                   type="text"
                   readOnly={!this.isServiceAccount(this.state.role)}
-                  value={this.state.email}
+                  value={this.getUsernameFieldValue()}
                   onChange={
                     this.isServiceAccount(this.state.role)
                       ? (e: any) => this.setState({ email: e.target.value })
@@ -560,7 +569,7 @@ class EditUser extends React.Component<Props, State> {
                   }
                   required={this.isServiceAccount(this.state.role)}
                 />
-                <CopyToClipboardButton text={this.state.email} />
+                <CopyToClipboardButton text={this.getUsernameFieldValue()} />
               </InputGroup>
             </Col>
           </Form.Group>
