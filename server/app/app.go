@@ -183,7 +183,7 @@ func (a *App) InitializeDefaultOrg() {
 		domain := config.InitOrgDomain
 		email := config.InitOrgUser + "@" + domain
 		if domain == "localhost" {
-			email = config.InitOrgUser + "@" + "seatsurfing.local"
+			email = config.InitOrgUser + "@" + "lntbooking.local"
 		}
 		org := &Organization{
 			Name:             config.InitOrgName,

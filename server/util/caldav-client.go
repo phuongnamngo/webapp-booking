@@ -146,7 +146,7 @@ func (c *CalDAVClient) DeleteEvent(calendarPath string, e *CalDAVEvent) error {
 
 func (c *CalDAVClient) GetCaldavEvent(events []*CalDAVEvent) *ical.Calendar {
 	cal := ical.NewCalendar()
-	cal.Props.SetText(ical.PropProductID, "-//seatsurfing.io//seatsurfing//EN")
+	cal.Props.SetText(ical.PropProductID, "-//lntbooking.io//LNT Booking//EN")
 	cal.Props.SetText(ical.PropVersion, "2.0")
 
 	for _, e := range events {

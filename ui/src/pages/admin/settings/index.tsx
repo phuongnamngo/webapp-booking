@@ -661,7 +661,7 @@ class Settings extends React.Component<Props, State> {
             </div>
             <div>&nbsp;</div>
             <div>
-              <strong>seatsurfing-verification={domain.verifyToken}</strong>
+              <strong>lntbooking-verification={domain.verifyToken}</strong>
             </div>
             <div>&nbsp;</div>
             <Button

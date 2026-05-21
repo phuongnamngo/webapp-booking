@@ -27,7 +27,7 @@ func IsValidTXTRecord(domain, uuid string) bool {
 		log.Println(err)
 		return false
 	}
-	checkString := "seatsurfing-verification=" + uuid
+	checkString := "lntbooking-verification=" + uuid
 	for _, record := range records {
 		if record == checkString {
 			return true

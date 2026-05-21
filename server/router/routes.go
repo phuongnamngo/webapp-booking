@@ -27,7 +27,7 @@ import (
 type contextKey string
 
 func (c contextKey) String() string {
-	return "seatsurfing context key " + string(c)
+	return "lntbooking context key " + string(c)
 }
 
 var (
