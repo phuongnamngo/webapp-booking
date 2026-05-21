@@ -13,7 +13,7 @@ The client must use the v2 discovery root **`https://apidata.googleusercontent.c
 
 ## Server configuration
 
-Set in environment (or `.env` for local dev):
+Set in the repo root `.env` (used by `docker compose`; not committed). For local `./run.sh`, copy the same vars into `server/.env`:
 
 ```bash
 GOOGLE_CALDAV_CLIENT_ID=your-client-id.apps.googleusercontent.com
