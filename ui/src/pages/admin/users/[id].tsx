@@ -282,7 +282,7 @@ class EditUser extends React.Component<Props, State> {
     });
   };
 
-  onGroupsSelected = (selected: Group[]) => {
+  onGroupsSelected = (selected: any) => {
     this.setState({ selectedGroups: selected });
   };
 
@@ -532,7 +532,7 @@ class EditUser extends React.Component<Props, State> {
                   options={this.state.typeaheadGroupOptions}
                   selected={this.state.selectedGroups}
                   placeholder={this.props.t("searchForGroup")}
-                  renderMenuItemChildren={(option: Group) => (
+                  renderMenuItemChildren={(option: any) => (
                     <span>{option.name}</span>
                   )}
                 />
