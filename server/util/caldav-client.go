@@ -1,11 +1,13 @@
 package util
 
 import (
-	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -110,37 +112,52 @@ func (c *CalDAVClient) CreateEvent(calendarPath string, e *CalDAVEvent) error {
 	return err
 }
 
-func (c *CalDAVClient) DeleteEvent(calendarPath string, e *CalDAVEvent) error {
-	cal := c.GetCaldavEvent([]*CalDAVEvent{e})
-
-	var buf bytes.Buffer
-	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
-		return err
-	}
-
+// resolveHref mirrors emersion/go-webdav internal.Client.ResolveHref so DELETE
+// targets the same URL as PutCalendarObject (CreateEvent).
+func (c *CalDAVClient) resolveHref(p string) (string, error) {
 	u, err := url.Parse(c.url)
 	if err != nil {
-		return err
+		return "", err
 	}
-	pathNew := url.URL{
+	if u.Path == "" {
+		u.Path = "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = path.Join(u.Path, p)
+	}
+	return (&url.URL{
 		Scheme: u.Scheme,
 		User:   u.User,
 		Host:   u.Host,
-		Path:   path.Join(calendarPath, e.ID+".ics"),
-	}
+		Path:   p,
+	}).String(), nil
+}
 
-	req, err := http.NewRequest(http.MethodDelete, pathNew.String(), &buf)
+func (c *CalDAVClient) DeleteEvent(calendarPath string, e *CalDAVEvent) error {
+	if e.ID == "" {
+		return fmt.Errorf("caldav: event id is required")
+	}
+	objectPath := path.Join(calendarPath, e.ID+".ics")
+	reqURL, err := c.resolveHref(objectPath)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", ical.MIMEType)
+
+	req, err := http.NewRequest(http.MethodDelete, reqURL, nil)
+	if err != nil {
+		return err
+	}
 
 	resp, err := c.httpClient.Do(req.WithContext(context.Background()))
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("caldav delete failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
 	return nil
 }
 

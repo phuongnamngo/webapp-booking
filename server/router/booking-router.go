@@ -1689,12 +1689,19 @@ func (router *BookingRouter) sendApprovalRequestNotifications(e *Booking) {
 func (router *BookingRouter) onBookingDeleted(e *Booking, sendNotification bool) {
 	caldavClient, caldavEvent, path, err := router.initCaldavEvent(e)
 	if err == nil {
-		if e.CalDavID != "" {
-			caldavEvent.ID = e.CalDavID
+		eventID := e.CalDavID
+		if eventID == "" {
+			// CreateEvent uses booking ID as iCal UID; CalDavID may be unset if Update raced.
+			eventID = e.ID
+		}
+		if eventID != "" {
+			caldavEvent.ID = eventID
 			if err := caldavClient.DeleteEvent(path, caldavEvent); err != nil {
-				log.Println(err)
+				log.Printf("CalDAV delete failed for booking %s (event %s): %v", e.ID, eventID, err)
 			}
 		}
+	} else {
+		log.Printf("CalDAV delete skipped for booking %s: %v", e.ID, err)
 	}
 
 	if sendNotification {

@@ -363,19 +363,23 @@ func (router *RecurringBookingRouter) onBookingDeleted(e *RecurringBooking) {
 		return
 	}
 	br := &BookingRouter{}
-	for _, b := range bookings {
-		if b.Enter.After(*now) {
-			caldavClient, caldavEvent, path, err := br.initCaldavEvent(&b.Booking)
-			if err == nil {
-				if b.CalDavID != "" {
-					caldavEvent.ID = b.CalDavID
-					if err := caldavClient.DeleteEvent(path, caldavEvent); err != nil {
-						log.Println(err)
+		for _, b := range bookings {
+			if b.Enter.After(*now) {
+				caldavClient, caldavEvent, path, err := br.initCaldavEvent(&b.Booking)
+				if err == nil {
+					eventID := b.CalDavID
+					if eventID == "" {
+						eventID = b.ID
+					}
+					if eventID != "" {
+						caldavEvent.ID = eventID
+						if err := caldavClient.DeleteEvent(path, caldavEvent); err != nil {
+							log.Printf("CalDAV delete failed for recurring booking %s (event %s): %v", b.ID, eventID, err)
+						}
 					}
 				}
 			}
 		}
-	}
 }
 
 func (router *RecurringBookingRouter) sendMailNotification(e *RecurringBooking, bookings []*Booking) {
