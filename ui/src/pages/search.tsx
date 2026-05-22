@@ -66,6 +66,7 @@ import UserPreference from "@/types/UserPreference";
 import User from "@/types/User";
 import type { SpaceTypeSlot } from "@/types/SpaceType";
 import DateTimePicker from "@/components/DateTimePicker";
+import ModalBookingFlexibleTimePickers from "@/components/ModalBookingFlexibleTimePickers";
 import IconTextButton from "@/components/IconTextButton";
 import DateUtil from "@/util/DateUtil";
 import BrowserUtil from "@/util/BrowserUtil";
@@ -864,6 +865,16 @@ export class Search extends React.Component<Props, State> {
     };
   };
 
+  onModalEnterTimeChange = (value: Date): void => {
+    const [, modalLeave] = this.getModalBookingRange();
+    this.updateModalBookingRange(value, modalLeave);
+  };
+
+  onModalLeaveTimeChange = (value: Date): void => {
+    const [modalEnter] = this.getModalBookingRange();
+    this.updateModalBookingRange(modalEnter, value);
+  };
+
   updateModalBookingRange = (
     enter: Date,
     leave: Date,
@@ -910,9 +921,6 @@ export class Search extends React.Component<Props, State> {
       if (!this.isModalRangeAllowedByDayStatus(enter, leave, dayStatus)) {
         markUnavailable();
         return;
-      }
-      if (isCurrentRequest()) {
-        this.setState({ modalAvailabilityLoading: true });
       }
       let availabilityLeave = new Date(leave);
       if (!RuntimeConfig.INFOS.dailyBasisBooking) {
@@ -1488,46 +1496,15 @@ export class Search extends React.Component<Props, State> {
 
     return (
       <>
-        <Form.Group as={Row} style={{ marginTop: "25px" }}>
-          <Form.Label column sm="4" htmlFor="modal-enter">
-            {this.props.t("startTime")}:
-          </Form.Label>
-          <Col sm="8">
-            <DateTimePicker
-              id="modal-enter"
-              value={modalEnter}
-              disabled={noBookableTimeRemaining}
-              onChange={(value: Date | null | [Date | null, Date | null]) => {
-                if (value != null && value instanceof Date) {
-                  this.updateModalBookingRange(value, modalLeave);
-                }
-              }}
-              noCalendar={true}
-              enableTime={true}
-              required={true}
-            />
-          </Col>
-        </Form.Group>
-        <Form.Group as={Row} style={{ marginTop: "10px" }}>
-          <Form.Label column sm="4" htmlFor="modal-leave">
-            {this.props.t("endTime")}:
-          </Form.Label>
-          <Col sm="8">
-            <DateTimePicker
-              id="modal-leave"
-              value={modalLeave}
-              disabled={noBookableTimeRemaining}
-              onChange={(value: Date | null | [Date | null, Date | null]) => {
-                if (value != null && value instanceof Date) {
-                  this.updateModalBookingRange(modalEnter, value);
-                }
-              }}
-              noCalendar={true}
-              enableTime={true}
-              required={true}
-            />
-          </Col>
-        </Form.Group>
+        <ModalBookingFlexibleTimePickers
+          enter={modalEnter}
+          leave={modalLeave}
+          disabled={noBookableTimeRemaining}
+          startTimeLabel={this.props.t("startTime")}
+          endTimeLabel={this.props.t("endTime")}
+          onEnterChange={this.onModalEnterTimeChange}
+          onLeaveChange={this.onModalLeaveTimeChange}
+        />
         {this.renderModalAvailabilityHint(bookingError)}
       </>
     );
@@ -2850,6 +2827,7 @@ export class Search extends React.Component<Props, State> {
     const confirmModal = (
       <Modal
         show={this.state.showConfirm}
+        enforceFocus={false}
         onHide={() =>
           this.setState({ showConfirm: false, showRecurringOptions: false })
         }

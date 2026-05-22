@@ -262,6 +262,20 @@
   border-width: 1px;
 }
 
+.preferences-inline-check input:focus-visible + .preferences-workday-box {
+  outline: 2px solid #1076eb;
+  outline-offset: 2px;
+}
+
+.preferences-inline-check input:checked + .preferences-workday-box {
+  background: #1076eb;
+  border-color: #1076eb;
+}
+
+.preferences-inline-check input:checked + .preferences-workday-box .preferences-workday-check {
+  opacity: 1;
+}
+
 .preferences-section-title {
   font-size: 22px;
   line-height: 32px;
