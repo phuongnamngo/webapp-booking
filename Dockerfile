@@ -31,7 +31,7 @@ WORKDIR /go/src/healthcheck
 ADD healthcheck/ .
 RUN xx-go build -ldflags="-w -s" -o healthcheck . && xx-verify healthcheck
 
-FROM gcr.io/distroless/base-debian13@sha256:c83f022002fc917a92501a8c30c605efdad3010157ba2c8998a2cbf213299201
+FROM gcr.io/distroless/base-debian13@sha256:f4a335ca209e1d2ee873102c17c389ad0142e3d5b21aee2817e9cc9c01d87d20
 LABEL org.opencontainers.image.source="https://github.com/seatsurfing/seatsurfing" \
       org.opencontainers.image.url="https://seatsurfing.io" \
       org.opencontainers.image.documentation="https://seatsurfing.io/docs/"
